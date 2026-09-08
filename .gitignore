@@ -1,0 +1,13 @@
+# R compiler / Colab junk
+.Rhistory
+.RData
+.Ruserdata
+*.tar.gz
+*.Rcheck/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ignore local lockfiles that break diffs of notebooks
+.ipynb_checkpoints/
