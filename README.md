@@ -2,6 +2,19 @@
 
 Interactive, gamified R notebooks for **COMP2501 Introduction to Data Science** (HKU, RB Luo / 羅鉞邦). Each notebook mirrors a lecture's learning objectives and is designed to be **walked through by hand** in a browser — you read the concepts, fill in the blanks yourself, run the code, and predict the output — so the ideas stick the way git concepts stick.
 
+## ▶ Open in Colab (one click)
+
+| Notebook | What it covers | Open |
+|----------|----------------|------|
+| **Lec 1 — R Basics** | objects, `<-`, functions, atomic types, data frames, vectorization | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/onezion12344/comp2501-r-notebooks/blob/main/lectures/lec01-r-basics/lec01_r_basics.ipynb) |
+| **Lec 2 — tidyverse & Data Import** | R Markdown, dplyr verbs + pipe, group_by/summarize, purrr, case_when, read_csv | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/onezion12344/comp2501-r-notebooks/blob/main/lectures/lec02-tidyverse/lec02_tidyverse.ipynb) |
+| **Tutorial 1 — In-class Exercises 01** | the official exercises: mtcars + the 5 dplyr verbs | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/onezion12344/comp2501-r-notebooks/blob/main/tutorials/tut01-inclass-exercises/tut01_inclass_exercises.ipynb) |
+
+> **After opening:** set the runtime to R — `Runtime ▸ Change runtime type ▸ R` (Colab usually auto-detects the R kernel from the notebook metadata).
+>
+> **Sharing note:** this repo is **private**. The Colab links work for you (signed in) and for anyone you add as a collaborator. To make the links work for *anyone*, flip the repo to public in GitHub → Settings → General → Danger Zone.
+
+
 ## Why these exist
 
 The course teaches R + tidyverse. RStudio is just an IDE wrapper; the language and concepts run fine without it. These notebooks let you work **zero-install**:
