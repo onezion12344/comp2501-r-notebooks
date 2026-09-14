@@ -1,0 +1,793 @@
+---
+title: "COMP2501 Lec 4 - Visualization, Wrangling and Web Scraping"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · Lec 4 — Visualization Principles, Data Wrangling & Web Scraping
+
+**Course**: Introduction to Data Science and Engineering (RB Luo)
+
+This lecture has **three parts**, and they chain together: you *scrape* messy data → you *wrangle* it into a tidy shape → you *visualize* it honestly.
+
+1. **Data visualization principles** — what to do, what to avoid, and *why* (based on how human perception actually works).
+2. **Data wrangling** — tidy/long/wide, `pivot_longer`/`pivot_wider`, `separate`, joins, binding, set operators.
+3. **Web scraping** — `rvest`: get a table off a web page when there's no CSV.
+
+> **How to use:** predict → fill the blank → run → reveal the answer. Every principle in Part 1 is paired with a plot you can actually make.
+
+---
+## Before you start
+
+```r
+library(tidyverse)   # dplyr, tidyr, ggplot2, readr, purrr
+```
+
+Some sections also use `dslabs` (the course's dataset package) and, for the scraping part, `rvest`:
+
+```r
+install.packages(c("dslabs", "rvest"))   # run once if needed
+```
+
+> Set the Colab runtime to **R**: `Runtime ▸ Change runtime type ▸ R`.
+
+---
+# Part 1 · Data visualization principles
+
+## 1.1 What visual cues can carry data?
+
+Every plot encodes numbers into some visual channel. The channels available are:
+
+| Channel | Example |
+|---|---|
+| X / Y position (and aligned length) | axes, bar length |
+| Movement | animation |
+| Shape | ○ or × |
+| Size | o or O |
+| Angle / orientation | ↑ or → |
+| Patterns / line styles | dashed vs solid |
+| Color — **hue** | red vs blue |
+| Color — **shade** | light vs dark |
+| Color — **opacity** | opaque vs transparent |
+
+**The key question is never "which channel can I use?" but "which channel is most accurately read?"** Not all channels are equal — that's the whole point of this lecture.
+
+## 1.2 The encoding hierarchy (the most exam-able idea here)
+
+From the lecture:
+
+**For numerical variables:**
+> X/Y (position/length), motion **>>** size, angle/orientation **>** color (shade), color (opacity)
+
+**For categorical variables:**
+> X/Y (position/length) **>** shape, patterns/line styles, color (hue) **>** size, angle/orientation, color (shade)
+
+Two things to notice:
+
+1. **Position always wins**, for both types. That's why scatter plots and bar charts are the workhorses.
+2. **Hue is fine for categories but poor for magnitudes.** You can tell red from blue instantly; you *cannot* reliably judge "how much bigger" one shade of blue is than another.
+
+**Rule of thumb:** use hue to *distinguish*, use position/length to *compare*.
+
+## 1.3 Pie charts are a bad way to show data
+
+The lecture is blunt about this:
+
+> "Pie charts are a very bad way of displaying information. The eye is good at judging linear measures and bad at judging relative areas."
+
+Cleveland (1985), quoted in the slides: *"Data that can be shown by pie charts always can be shown by a dot chart. This means that judgements of position along a common scale can be made instead of the less accurate angle judgements."*
+
+A pie chart uses only **angle and area** — the two channels we read worst. A bar chart uses **position/length**.
+
+**If you must make a pie chart** (the lecture allows it): *provide labels and numbers*, so the reader isn't forced to estimate angles.
+
+**Try it — compare the two encodings yourself:**
+
+```r
+# The lecture's browser-share example
+browsers <- data.frame(
+  browser = c('Opera', 'Safari', 'Firefox', 'Chrome', 'IE'),
+  y2000   = c(3, 21, 23, 26, 28),
+  y2015   = c(2, 22, 21, 29, 27)
+)
+
+# Pie chart: hard to compare 21 vs 23 vs 26 by angle...
+pie(browsers$y2000, labels = browsers$browser, main = 'Pie: looks pretty, reads badly')
+
+# Bar chart: 21 vs 23 vs 26 is instantly obvious by height
+barplot(browsers$y2000, names.arg = browsers$browser, main = 'Bar: compare by position/length')
+```
+
+After running both, answer: **which browser had the most share in 2000?** In the bar chart you read it instantly. In the pie chart you have to measure angles with your eyes.
+
+## 1.4 Know when to include 0
+
+This is one of the most-abused tricks in data presentation.
+
+```r
+df <- data.frame(name = c('me', 'Karen'), score = c(90, 80))
+
+# (a) honest: y starts at 0 — the bars are visually 90 vs 80
+ggplot(df, aes(name, score)) + geom_col()
+
+# (b) misleading: crop the y axis — now Karen's bar looks almost HALF of mine
+ggplot(df, aes(name, score)) + geom_col() + coord_cartesian(ylim = c(70, 90))
+```
+
+**Bar charts encode magnitude by length.** If you cut the axis, the *lengths* no longer mean anything — you've drawn a lie. Always start bars at zero.
+
+But note: **this applies to bars (length encoding), not to points/lines (position encoding).** For a scatter plot or a line chart, cropping the axis can be fine — the reader reads *position*, not length. The lecture shows both a US tax-rate bar chart (where starting at 35% exaggerates) and a Venezuela election bar chart (50.66 vs 49.07) as cautionary examples.
+
+**Answer for yourself:** in plot (b), roughly how many times taller does "me" look than "Karen"? (Answer: ~3×, even though the real ratio is 90/80 ≈ 1.1×.)
+
+## 1.5 Know where to put 0 — broken axes
+
+Sometimes you genuinely need to show both a huge value and fine differences near a smaller value. Cropping (1.4) lies; showing everything from 0 flattens the detail.
+
+The middle ground is a **broken axis** — the `ggbreak` package:
+
+```r
+library(ggbreak)
+ggplot(df, aes(name, score)) + geom_col() +
+  coord_cartesian(ylim = c(0, 90)) +
+  scale_y_break(c(10, 70))     # visibly skips 10-70
+```
+
+The break mark tells the reader "the axis jumps here", which is honest in a way that silently cropping is not.
+
+## 1.6 Order your categories by a meaningful value
+
+Default alphabetical (or factor-level) order is almost never the most informative order.
+
+The lecture's example: comparing US murder rates by state. Alphabetical order makes you hunt; ordered by rate, the extremes jump out.
+
+```r
+library(dslabs)
+data(murders)
+murders |>
+  mutate(murder_rate = total / population * 1e5) |>
+  mutate(state = reorder(state, murder_rate)) |>   # <- the key step
+  ggplot(aes(murder_rate, state)) +
+  geom_col() +
+  xlab('Murder rate per 100,000')
+```
+
+`reorder(state, murder_rate)` re-orders the factor levels of `state` by `murder_rate`. That single call turns a wall of bars into a readable ranking.
+
+**Your turn:** change `reorder(state, murder_rate)` to `reorder(state, -murder_rate)`. What changes, and which order would you show if your point were "these states are dangerously unsafe"?
+
+## 1.7 Show your data
+
+A **dynamite plot** (bar + error bar) *suggests* it summarizes multiple numbers — but it hides the distribution. It shows only mean ± SD, and readers can't see whether the data is bimodal, skewed, or has outliers.
+
+Alternatives, in increasing order of information:
+
+| Plot | Shows |
+|---|---|
+| Dynamite (bar + error bar) | mean ± SD only |
+| Box plot | quartiles, min/max, outliers |
+| Violin / density plot | the full distribution shape |
+| Scatter / swarm plot | **every data point** |
+
+```r
+data(heights)
+
+# Box plot
+heights |> ggplot(aes(sex, height)) + geom_boxplot() + theme_minimal()
+
+# Violin
+heights |> ggplot(aes(sex, height)) + geom_violin() + theme_minimal()
+
+# Scatter, jittered so points don't overlap
+heights |> ggplot(aes(sex, height)) + geom_jitter(width = 0.3, alpha = 0.3) + theme_minimal()
+
+# The most honest of all (needs the ggbeeswarm package)
+# heights |> ggplot(aes(sex, height)) +
+#   geom_beeswarm(alpha = 0.3) + theme_minimal()
+```
+
+**Predict then check:** in the plain scatter plot (`geom_point`, no jitter), what goes wrong when many people share the same height? (They plot on top of each other — you see one dot where there might be 50 observations.)
+
+## 1.8 Use common axes — but don't oversimplify
+
+To compare two plots, put them on the **same scale**. The lecture's example: female vs male height histograms with a shared x-axis let you see the shift directly.
+
+But the lecture adds a warning: **"Do not over-simplify! Oversimplification is anti-simplicity."** It then shows a real scientific figure where forcing a common axis *destroyed* the message (the two panels measured different things at different scales).
+
+**The judgment call:** use common axes when the reader's task is comparison; use separate axes when the panels are genuinely different quantities.
+
+## 1.9 Limit the amount of information a plot conveys
+
+The lecture contrasts two network diagrams: one with a manageable number of nodes (you can trace the relationships) and one hairball with hundreds of nodes and edges (you can see nothing).
+
+> "With a correct amount of information, you are willing to look into the details."
+
+More data in one plot is not more informative. Past a threshold, it's *less*.
+
+## 1.10 Make good use of colors
+
+Four rules from the lecture:
+
+1. **Use no more than six colors in a plot.** Beyond that, readers can't map colors back to categories.
+2. **Hue versus shade.** Hue (red/blue/green) distinguishes *categories*. Shade (light/dark) can suggest *magnitude* — but remember from 1.2 that shade is low in the hierarchy.
+3. **Be consistent between plots** — same palette for the same categories across every figure.
+4. **Use color-blind friendly colors.** ~8% of men have some color vision deficiency; red/green comparisons are the classic trap.
+
+```r
+# A color-blind friendly palette (from the lecture)
+color_blind_friendly_cols <- c('#999999', '#E69F00', '#56B4E9',
+                               '#009E73', '#F0E442', '#0072B2',
+                               '#D55E00', '#CC79A7')
+scales::show_col(color_blind_friendly_cols)
+```
+
+This is the Okabe-Ito palette family — you'll see it in good scientific papers.
+
+## 1.11 Adding a third (and fourth) variable
+
+The lecture's GDP / life-expectancy example adds **population as dot size**:
+
+```r
+gapminder |>
+  filter(year == 2010 & !is.na(dollars_per_day) & country %in% country_list) |>
+  ggplot(aes(dollars_per_day, life_expectancy, size = population / 1e6)) +
+  geom_point(aes(color = group), alpha = 0.5) +
+  scale_x_continuous(trans = 'log2')
+```
+
+Now the plot carries: x = income, y = life expectancy, color = region, size = population. Four variables.
+
+**The lecture's warning:** *avoid adding more than three variables to a plot unless the data points are scarce.* Each added channel makes every other channel harder to read.
+
+## 1.12 Avoid (pseudo) 3D plots
+
+Pseudo-3D plots (the "3D bars", "3D pie", "3D scatter") are strictly worse than their 2D versions:
+
+- You can't read values off a 3D surface accurately.
+- Depth cues fight with each other.
+- The projection *distorts* the very comparisons you're making.
+
+The lecture's fix for a 3-variable relationship: use **two 2D panels** (small multiples) instead of one 3D cube. You lose nothing and gain readability.
+
+> **Bottom line:** if you're tempted to use 3D, use facets instead.
+
+## 1.13 Use 1 to 3 decimal points, consistently
+
+Displaying `37.882632032` says nothing useful and signals "I don't really care". Round for display:
+
+```r
+gapminder <- mutate(gapminder, dollars_per_day = round(dollars_per_day, 2))
+```
+
+**Rule:** pick a precision (usually 1-3 decimals) and apply it consistently across the whole figure or table. Extra digits are noise, not precision.
+
+## 1.14 Case study: vaccines and infectious diseases
+
+The lecture's motivating example: the WSJ graphic showing measles rates fall after vaccine introduction (a heatmap — year on x, state on y, color = rate, plus a vertical line at the introduction year).
+
+The point: **effective communication of data is a strong antidote to misinformation and fear-mongering.** And the next sections teach you to *build that exact plot yourself*.
+
+**Get ready:**
+
+```r
+library(tidyverse)
+library(RColorBrewer)
+library(dslabs)
+data(us_contagious_diseases)
+names(us_contagious_diseases)
+# [1] "disease"         "state"           "year"            "weeks_reporting" "count"           "population"
+```
+
+**Data wrangling — compute a comparable rate:**
+
+```r
+the_disease <- 'Measles'
+dat <- us_contagious_diseases |>
+  filter(!(state %in% c('Hawaii', 'Alaska')) & disease == the_disease) |>  # excluded: insufficient data
+  mutate(rate = count / population * 10000 * 52 / weeks_reporting) |>      # normalize to per-100k per-year
+  mutate(state = reorder(state, rate, median, na.rm = TRUE))               # order states by median rate
+```
+
+Note the `rate` formula: `count / population * 10000` gives a per-100k rate, but the reporting period varies (`weeks_reporting`), so `* 52 / weeks_reporting` annualizes it. **This is real wrangling: making numbers comparable before you plot them.**
+
+**Voila — the heatmap:**
+
+```r
+dat |> ggplot(aes(year, state, fill = rate)) +
+  geom_tile(color = 'grey50') +
+  scale_x_continuous() +
+  scale_fill_gradientn(colors = brewer.pal(9, 'Reds'), trans = 'sqrt') +
+  geom_vline(xintercept = 1963, col = 'blue') +
+  theme_minimal() +
+  theme(panel.grid = element_blank(),
+        legend.position = 'bottom',
+        text = element_text(size = 8)) +
+  labs(title = the_disease, x = '', y = '')
+```
+
+**Your turn — change `the_disease` and re-run.** Try `'Polio'` and `'Pertussis'`. Do they all fall at the same year? (No — that's the point.)
+
+---
+# Part 2 · Data wrangling
+
+## 2.1 Why wrangle?
+
+Everything so far used **tidy, clean** data. Real data is messy — especially when it comes from web pages, tweets, or PDFs.
+
+Common problems:
+- **missing entries** (`NA`)
+- **outliers / incorrect data**
+- **inconsistent formats** (dates as `'Jan 5 2020'` and `'2020-01-05'` in the same column)
+
+The lecture's `reported_heights` example is the classic:
+
+```r
+data('reported_heights')
+unique(reported_heights$height)[1:50]
+# "75"  "70"  "68"  "74"  "61"  "65"  "66"  "62"  "67"  "72"
+# "6"   "69"  "64"  "66.75"  "5.3"  "63"  "70.5"  "165cm"  "511"  "5'7'"
+# ...and so on — inches, cm, feet-inches, typos
+```
+
+One column, at least four incompatible units. **No analysis can start until this is fixed.**
+
+**Missing values:**
+
+```r
+data('airquality')
+mean(airquality$Ozone)          # NA — because the column has NAs
+sum(is.na(airquality$Ozone))    # 37 — how many
+
+mean(airquality$Ozone, na.rm = TRUE)   # the fix
+```
+
+**Try it.** Also try plotting `airquality` with `geom_point()` and read the warning message — ggplot *tells you* how many rows it dropped.
+
+## 2.2 Tidy, long, and wide
+
+A data table is **tidy** if:
+- each **row** = ONE observation
+- each **column** = a different variable
+
+| Aspect | Long | Wide | Tidy |
+|---|---|---|---|
+| Definition | each row an observation; fewer columns | variables spread across columns | each variable a column, each row an observation |
+| Structure | narrow and tall | wide and short | standardized for analysis tools |
+| Use case | analysis, plotting, time-series | reporting, human readability | data analysis workflows |
+
+**Important subtlety from the lecture: long is not automatically tidy.** A long table can still have multiple rows pointing at the same observation, and it may lack unique identifiers.
+
+We'll use the fertility dataset (2 countries × 56 years) — read it from `dslabs`:
+
+```r
+library(tidyverse)
+library(dslabs)
+path <- system.file('extdata', package = 'dslabs')
+filename <- file.path(path, 'fertility-two-countries-example.csv')
+wide_data <- read_csv(filename, show_col_types = FALSE)
+wide_data
+# A tibble: 2 x 57  -> country, `1960`, `1961`, ... `2015`
+```
+
+**This is wide format**: 2 rows, 57 columns. The *year* is hiding in the column names, which is exactly what tidy data forbids.
+
+## 2.3 Wide → Long: `pivot_longer`
+
+Goal: one row per (country, year). So we split one row into many rows — and we must answer two questions: *which columns are we splitting?* and *what do we name the results?*
+
+```r
+new_tidy_data <- pivot_longer(
+  wide_data,
+  `1960`:`2015`,          # which columns
+  names_to = 'year',      # new column holding the old column NAMES
+  values_to = 'fertility' # new column holding the old VALUES
+)
+```
+
+### The backtick gotcha (very exam-able)
+
+If you write `1960:2015` **without backticks**, R reads it as the *sequence* 1960, 1961, ..., 2015 — 56 numbers, not the column names:
+
+```r
+pivot_longer(wide_data, 1960:2015, names_to = 'year', values_to = 'fertility')
+# Error: Can't subset columns past the end.
+# Locations 1960, 1961, ..., 2015 don't exist. There are only 57 columns.
+```
+
+- `` `1960`:`2015` `` means "every column from the one named 1960 to the one named 2015".
+- `` ` `` allows spaces too: a column called `life expectancy` is written `` `life expectancy` ``.
+- `'1960':'2015'` and `"1960":"2015"` also work, but backticks are R's standard.
+
+### Even more convenient: negative indexing
+
+```r
+new_tidy_data <- wide_data |>
+  pivot_longer(-country, names_to = 'year', values_to = 'fertility')
+```
+
+Just as `x[-1]` means "everything except the first element", `-country` means "pivot everything except `country`". When you have 56 year columns, this is much nicer than listing them.
+
+**Try both and confirm they produce identical results.**
+
+## 2.4 Use correct data types
+
+After pivoting, check your types:
+
+```r
+str(new_tidy_data)
+# $ country  : chr
+# $ year     : chr   <- ! year is a CHARACTER, not a number
+# $ fertility: num
+```
+
+`pivot_longer` assumes column names are characters — they were `'1960'`, `'1961'`, etc. But a year is a number, and treating it as text breaks sorting and plotting.
+
+```r
+new_tidy_data <- wide_data |>
+  pivot_longer(-country, names_to = 'year', values_to = 'fertility') |>
+  mutate(year = as.integer(year))
+```
+
+**Now it plots properly:**
+
+```r
+new_tidy_data |>
+  ggplot(aes(year, fertility, color = country)) +
+  geom_point()
+```
+
+**Why this matters:** with `year` as character, `scale_x_continuous()` and arithmetic like `year - 1960` would fail or behave bizarrely. Always `str()` your data after reshaping.
+
+## 2.5 Long → Wide: `pivot_wider`
+
+The inverse operation. You need it when a long table has **multiple rows per observation** that should become multiple columns.
+
+```r
+new_wide_data <- pivot_wider(
+  new_tidy_data,
+  names_from = 'year',       # where do new column names come from?
+  values_from = 'fertility'  # where do the values come from?
+)
+```
+
+**Two rules that make `pivot_wider` tricky:**
+
+1. Two long rows get combined into one wide row **if and only if ALL other columns are identical**.
+2. Every unique value in the `names_from` column becomes a new column.
+
+**A cautionary example from the lecture:**
+
+```r
+murders |>
+  select(region, state, population) |>
+  pivot_wider(names_from = 'state', values_from = 'population')
+# A tibble: 4 x 52  -> one row per region, one column per state
+# Missing entries are filled with NA
+```
+
+This gives 4 rows × 52 columns, mostly `NA` — because each region only contains a few states. Wide format is sometimes *unnatural*; the lecture's point is that pivoting isn't automatically good.
+
+## 2.6 When one observation spans multiple columns: `separate`
+
+The lecture's harder example: a table with columns `1960_fertility`, `1960_life_expectancy`, `1961_fertility`, ... — **two variables packed into each column name.**
+
+```r
+filename <- file.path(path, 'life-expectancy-and-fertility-two-countries-example.csv')
+raw_dat <- read_csv(filename, show_col_types = FALSE)
+# Rows: 2 Columns: 113
+# chr (1): country
+# dbl (112): 1960_fertility, 1960_life_expectancy, 1961_fertility, ...
+```
+
+A first `pivot_longer` gives you one `name` column containing `'1960_fertility'`, `'1960_life_expectancy'`, ... but now one observation spans two rows.
+
+**`separate()` splits one column into several.** It takes three arguments: the column to split, the new column names, and the separator.
+
+**The gotcha — splitting on `'_'` fails:**
+
+```r
+raw_dat |>
+  pivot_longer(-country) |>
+  separate(name, c('year', 'name'), '_')
+# Warning: Expected 2 pieces. Additional pieces discarded in 112 rows
+# and you get 'life' instead of 'life_expectancy'
+```
+
+Because `'1960_life_expectancy'` has **two** underscores, not one.
+
+**Adding more columns doesn't fix it either:**
+
+```r
+separate(name, c('year', 'name1', 'name2'), '_')
+# Warning: Expected 3 pieces. Missing pieces filled with `NA` in 112 rows
+```
+
+**The fix — `extra = 'merge'`** (the extra piece stays joined with the previous one):
+
+```r
+raw_dat |>
+  pivot_longer(-country) |>
+  separate(name, c('year', 'name'), '_', extra = 'merge')
+# now you get 'life_expectancy' correctly
+```
+
+The lecture notes that **regular expressions** are the more general solution (next lecture).
+
+**Try all three versions and read the warnings closely** — they tell you exactly what went wrong.
+
+## 2.7 The full recipe: `pivot_longer` → `separate` → `pivot_wider`
+
+Putting it together to turn a messy wide table into a tidy one:
+
+```r
+raw_dat |>
+  pivot_longer(-country) |>
+  separate(name, c('year', 'name'), '_', extra = 'merge') |>
+  pivot_wider()
+# A tibble: 112 x 4
+# country  year  fertility  life_expectancy
+```
+
+**The three steps (memorize this pattern):**
+
+1. **`pivot_longer`** — make each individual *number* a row.
+2. **`separate`** — extract the *variable name* for each row.
+3. **`pivot_wider`** — re-combine numbers that belong to the same observation.
+
+This "melt → split → cast" pattern appears constantly in real data work, in R and beyond.
+
+## 2.8 Joining tables
+
+Different information lives in different tables. **Joins** combine them by a shared identifier.
+
+The lecture's example: `murders` (population by state) + `results_us_election_2016` (electoral votes by state).
+
+```r
+data(murders)
+data(results_us_election_2016)
+
+tab <- murders |>
+  left_join(results_us_election_2016, by = 'state') |>
+  select(-others) |>
+  rename(ev = 'electoral_votes')
+
+head(tab, 5)
+```
+
+**Two families of join (from the cheat sheet in the slides):**
+
+**Mutating joins** — add columns from another table:
+| Function | Keeps |
+|---|---|
+| `left_join(x, y)` | all rows of x, matching from y |
+| `right_join(x, y)` | all rows of y, matching from x |
+| `inner_join(x, y)` | **only** rows with matches in both |
+| `full_join(x, y)` | **all** rows from both, NAs where missing |
+
+**Filtering joins** — filter *without* adding columns:
+| Function | Keeps |
+|---|---|
+| `semi_join(x, y)` | rows of x that **have** a match in y (no new columns) |
+| `anti_join(x, y)` | rows of x that **do NOT have** a match in y |
+
+> `right_join(x, y)` is equivalent to `left_join(y, x)`.
+
+**Try it — build two small tables and compare all six joins.** The lecture constructs `tab_1` (murd</br>ers rows 1-6) and `tab_2` (5 states, overlapping but not identical):
+
+```r
+tab_1 <- slice(murders, 1:6) |> select(state, population)
+tab_2 <- results_us_election_2016 |>
+  filter(state %in% c('Alabama', 'Alaska', 'Arizona', 'California', 'Connecticut', 'Delaware')) |>
+  select(state, electoral_votes) |>
+  rename(ev = electoral_votes)
+
+left_join(tab_1, tab_2, by = 'state')    # states in tab_1 but not tab_2 get NA
+right_join(tab_1, tab_2, by = 'state')   # states in tab_2 but not tab_1 get NA
+inner_join(tab_1, tab_2, by = 'state')   # only the 4 states in both
+full_join(tab_1, tab_2, by = 'state')    # all 8 rows, NAs filled in
+semi_join(tab_1, tab_2, by = 'state')    # tab_1 rows with a match — NO ev column
+anti_join(tab_1, tab_2, by = 'state')    # tab_1 rows WITHOUT a match
+```
+
+**Predict the row counts before you run:** left = 6, right = 6, inner = 4, full = 8. Check yourself.
+
+## 2.9 Binding — combining without matching
+
+**Binding functions do NOT match by a variable** — they just stack data. If dimensions don't line up, you get an error (or silent nonsense).
+
+```r
+# Columns: side by side
+bind_cols(a = 1:3, b = 4:6)
+
+# Rows: stacked
+tab_1 <- tab[1:2, ]
+tab_2 <- tab[3:4, ]
+bind_rows(tab_1, tab_2)
+```
+
+**⚠️ Be careful — the lecture shows what goes wrong:**
+
+```r
+bind_cols(murders[1:5, 1:3], results_us_election_2016[1:5, 1:3])
+# New names: `state` -> `state...1`, `state` -> `state...4`
+# Result: Alabama paired with CALIFORNIA, Alaska with TEXAS...
+```
+
+Binding two unrelated tables side-by-side silently produces rows that pair the wrong data. `bind_cols` doesn't check that row 1 of one table belongs with row 1 of the other.
+
+**The rule:** use `bind_rows` for stacking like-structured data; use joins (not `bind_cols`) when rows must be *matched*.
+
+## 2.10 Set operators
+
+For combining datasets at a more mathematical level:
+
+| Function | Meaning |
+|---|---|
+| `intersect(a, b)` | elements in **both** |
+| `union(a, b)` | elements in **either** (deduplicated) |
+| `setdiff(a, b)` | in `a` but **not** in `b` — **NOT symmetric** |
+| `setequal(a, b)` | **TRUE** if same elements, regardless of order |
+
+```r
+intersect(1:10, 6:15)      # 6 7 8 9 10
+union(1:10, 6:15)          # 1..15
+setdiff(1:10, 6:15)        # 1 2 3 4 5
+setdiff(6:15, 1:10)        # 11 12 13 14 15   <- order matters!
+setequal(1:5, 1:6)         # FALSE
+setequal(1:5, 5:1)         # TRUE  <- ignores order
+```
+
+They work on data frames too (via `dplyr::`):
+
+```r
+tab_1 <- tab[1:5, ]
+tab_2 <- tab[3:7, ]
+dplyr::intersect(tab_1, tab_2)   # rows 3,4,5
+dplyr::union(tab_1, tab_2)       # rows 1..7
+dplyr::setdiff(tab_1, tab_2)     # rows 1,2
+```
+
+**Predict then check:** what does `setdiff(tab_2, tab_1)` return? (Rows 6,7.)
+
+---
+# Part 3 · Web scraping
+
+## 3.1 Why scrape?
+
+> "The data we need is not always available in a spreadsheet/table form."
+
+The lecture's example: the `murders` dataset originally came from a **Wikipedia page**. There was no CSV link — the data existed only as an HTML table rendered for humans.
+
+**Web scraping** (web crawling) = the process of extracting data from a website.
+
+**HTML basics.** A page is structured by tags:
+
+```html
+<html>
+  <head>  <!-- metadata: title, styles, scripts --> </head>
+  <body>  <!-- visible content: headings, paragraphs, images, links, tables -->
+    <table>
+      <tr> <th>State</th> <th>Population</th> </tr>
+      <tr> <td>Alabama</td> <td>4,853,875</td> </tr>
+    </table>
+  </body>
+</html>
+```
+
+- `<html>` is the root element
+- `<head>` holds metadata (title, styles, scripts)
+- `<body>` holds visible content
+- Data sits inside tags like `<td>` (table data), wrapped in `<tr>` (table row)
+
+You can see the raw HTML of any page with **`Ctrl+U`** (Chrome/Edge: `Ctrl+U` / Mac: `Cmd+Option+U`).
+
+**The insight:** if the data follows a repeated pattern of tags, you can write a program to extract it.
+
+## 3.2 `rvest`: parse HTML in R
+
+tidyverse provides **rvest**.
+
+```r
+library(rvest)
+
+url <- paste0('https://en.wikipedia.org/wiki/',
+              'Gun_violence_in_the_United_States_by_state')
+h <- read_html(url)
+h
+# {html_document}
+# <html ...>
+```
+
+**Extract the elements you want:**
+
+```r
+tab <- h |> html_elements('table')   # all tables on the page
+tab
+# {xml_nodeset (2)}  -> two tables found
+```
+
+Now **pick the right one** and convert it to a data frame with `html_table()`:
+
+```r
+tab[[1]] |> html_table()
+# A tibble: 51 x 4  -> the state table
+tab[[2]] |> html_table()
+# A tibble: 11 x 2  -> a navigation box, not data
+```
+
+**Note:** `html_text(h)` dumps the entire raw page — useful for seeing what's there, but far too messy to work with directly. Use it for *inspection*, `html_elements()` + `html_table()` for *extraction*.
+
+**Build the data frame:**
+
+```r
+murders <- tab[[1]] |>
+  html_table() |>
+  setNames(c('state', 'population', 'total', 'murder_rate'))
+head(murders, 3)
+```
+
+> The lecture notes: numbers with commas (`'4,853,875'`) come in as **character**. Cleaning those up is the next lectures' job (string processing).
+
+**Finding the right element:** the lecture recommends the **SelectorGadget** browser extension — click the element you want and it tells you the CSS selector.
+
+```r
+install.packages('rvest')   # once
+```
+
+## 3.3 Ethics and legality of web scraping
+
+The lecture gives four guidelines. **This is exam material *and* real-world important:**
+
+1. **Respect `robots.txt`** — the site's machine-readable rules about what may be crawled.
+2. **Follow the website's terms of service.**
+3. **Rate limit your requests** — don't overload servers. A scraper firing thousands of requests/second is a denial-of-service attack, whether you meant it or not.
+4. **Only scrape public data.**
+
+The `polite` package enforces this automatically. Its three pillars:
+
+> **seeking permission, taking slowly, and never asking twice**
+
+(`bow()` asks permission by checking `robots.txt`; `scrape()` retrieves data and caches it so you don't re-request the same page.)
+
+**Try it:**
+
+```r
+# install.packages('polite')
+library(polite)
+# session <- bow('https://en.wikipedia.org/wiki/Gun_violence_in_the_United_States_by_state')
+# session   # shows whether scraping is permitted
+```
+
+**Ask yourself:** you want data behind a login, or a site's ToS forbids automated access. What do you do? (Answer: don't scrape it — find another source, or ask the owner.)
+
+---
+# Recap — what you should be able to explain
+
+**Visualization principles**
+1. The visual channels available, and the **encoding hierarchy** (position always wins).
+2. Why pie charts are bad (angle/area judgments) and what to use instead.
+3. When to include 0 (bar/length) vs when cropping is acceptable (point/position).
+4. `reorder()` for meaningful category order; why "show your data" beats dynamite plots.
+5. The color rules (≤6 colors, hue vs shade, consistency, color-blind friendly).
+6. Why pseudo-3D is always worse, and facets as the fix.
+
+**Data wrangling**
+7. Tidy = one observation per row, one variable per column; long ≠ automatically tidy.
+8. `pivot_longer` (+ backticks and the `1960:2015` trap, negative indexing).
+9. Check `str()` after reshaping — pivot makes character columns.
+10. `pivot_wider` and its rule (rows merge iff all other columns match).
+11. `separate()` and the `extra = 'merge'` fix for multi-underscore names.
+12. The `pivot_longer → separate → pivot_wider` recipe.
+13. Six joins (left/right/inner/full/semi/anti) and when to use each.
+14. Why `bind_cols` is dangerous, and the set operators.
+
+**Web scraping**
+15. HTML structure (html/head/body, table/tr/td).
+16. `read_html` → `html_elements('table')` → `html_table()` → `setNames()`.
+17. The four ethics rules + `polite`.
+
+**Next:** string processing and text mining — cleaning up exactly the messes (commas, units, dates) you just saw.

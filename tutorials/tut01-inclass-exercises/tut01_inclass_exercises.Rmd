@@ -1,0 +1,193 @@
+---
+title: "COMP2501 In-class Exercises 01"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · In-class Exercises 01 (interactive)
+
+This is the official **In-class Exercises 01** from the course, rebuilt as an interactive walkthrough. The goal is the same as in class: **try different code, predict outputs, and understand the dplyr verbs** — not just copy-paste.
+
+**What you need:** `dplyr`, `ggplot2`, `datasets`. If a package is missing, run the install cell below (once).
+
+> 🎓 **Exam-relevant.** `mutate`, `filter`, `select`, `group_by`/`summarize`, `arrange`, `top_n` are the core dplyr verbs and come up repeatedly. Get comfortable with the *pipe* `|>` too — it's used throughout.
+
+---
+## 0 · Packages
+
+Load the library, install once if needed.
+
+```{r}
+# install.packages(c("dplyr", "ggplot2"))   # run once if not installed
+
+library(dplyr)
+library(ggplot2)
+library(datasets)
+cat("packages loaded OK\n")
+```
+
+---
+## 1 · Write a function
+
+Write `compute_s_n(n)` that returns the sum of squares:
+
+$$S_n = 1^2 + 2^2 + 3^2 + \dots + n^2$$
+
+Then report the value for `n = 100`.
+
+```{r}
+# YOUR CODE
+# compute_s_n <- function(n) { ... }
+# compute_s_n(100)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+compute_s_n <- function(n) {
+  s <- 0
+  for (i in 1:n) {
+    s <- s + i^2
+  }
+  return(s)
+}
+
+compute_s_n(100)   # 338350
+```
+
+The for-loop version works because R's `1:n` makes a sequence. Note: `s <- s + i^2` accumulates. (vectorized alt: `sum((1:100)^2)`)
+</details>
+
+---
+## 2 · Explore `mtcars` with dplyr
+
+Load the built-in dataset and inspect it.
+
+```{r}
+data("mtcars")
+head(mtcars)      # first 6 rows
+dim(mtcars)       # observations x variables
+names(mtcars)     # all variable names
+```
+
+**b) Create `performance = hp / wt`** on a copy called `mtcars_modified`. Use `mutate`.
+
+```{r}
+# YOUR CODE
+# mtcars_modified <- mtcars |> mutate(performance = ?)
+# head(mtcars_modified)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+mtcars_modified <- mtcars |> mutate(performance = hp / wt)
+head(mtcars_modified)
+```
+
+`mutate` adds/overwrites a column. The pipe `|>` feeds `mtcars` into `mutate` as its first arg. `hp / wt` is vectorized (each row divided).
+</details>
+
+**c) 1) Top-1 by `performance`; 2) sort descending.** Use `top_n` and `arrange`.
+
+```{r}
+# YOUR CODE
+# 1. top_n(mtcars_modified, 1, performance)
+# 2. mtcars_modified |> arrange(desc(performance)) |> head()
+#    is the top_n result the first row of the sorted result?
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+top_n(mtcars_modified, 1, performance)
+mtcars_modified |> arrange(desc(performance)) |> head()
+```
+
+Yes — the `top_n` row is the first row of the `arrange(desc(...))` result. `top_n(1)` = the single highest; `arrange(desc(perf))` = full data sorted descending, so its first row matches.
+</details>
+
+**d) Filter to mpg > 20** → `mtcars_filtered` (use `filter`).
+
+```{r}
+# YOUR CODE
+# mtcars_filtered <- mtcars |> filter(?)
+# head(mtcars_filtered)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+mtcars_filtered <- mtcars |> filter(mpg > 20)
+head(mtcars_filtered)
+```
+
+`filter` keeps rows where the condition is TRUE. Note this filters the whole row, not columns — that's `select`'s job.
+</details>
+
+**e) Select only `mpg` and `cyl`** from the filtered set → `mtcars_selected` (use `select`).
+
+```{r}
+# YOUR CODE
+# mtcars_selected <- mtcars_filtered |> select(?)
+# head(mtcars_selected)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+mtcars_selected <- mtcars_filtered |> select(mpg, cyl)
+head(mtcars_selected)
+```
+
+`select` picks **columns** (keeps all rows). `filter` picks **rows** (keeps all columns). Easy to mix up — remember, filter = rows, select = columns.
+</details>
+
+**f) Group by `cyl`, summarize mean mpg** → `mtcars_grouped` (use `group_by` + `summarize`).
+
+```{r}
+# YOUR CODE
+# mtcars_grouped <- mtcars_selected |> group_by(cyl) |> summarize(?)
+# mtcars_grouped
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+mtcars_grouped <- mtcars_selected |> group_by(cyl) |> summarize(mean_mpg = mean(mpg))
+mtcars_grouped
+```
+
+`group_by(cyl)` splits data by cylinder value; `summarize(mean_mpg = mean(mpg))` aggregates each group to one row. Result: one mean mpg per cylinder group. This is the classic **split-apply-combine** pattern — the heart of data analysis.
+</details>
+
+---
+## Recap — the 5 dplyr verbs + pipe
+
+| verb | does | rows/cols |
+|------|------|-----------|
+| `filter` | keep rows matching a condition | rows |
+| `select` | keep chosen columns | cols |
+| `mutate` | add / overwrite a column | cols |
+| `arrange` | sort rows | rows |
+| `summarize` (with `group_by`) | collapse groups to summaries | rows ↓ |
+
+The pipe `|>` threads the left side as the first argument to the right side:
+`df |> filter(...) |> select(...)` = `select(filter(df, ...), ...)`. It makes the chain read top-to-bottom like a recipe.
+
+**Quick self-quiz:**  
+- `filter` vs `select`: which drops columns, which drops rows?
+- What does `mutate` do that `summarize` doesn't?
+- What does `group_by` *alone* do to a data frame? (It doesn't change the rows you see — it just remembers the grouping for the next verb.)
+
+Next up: `lec02-tidyverse` for importing data and more dplyr.

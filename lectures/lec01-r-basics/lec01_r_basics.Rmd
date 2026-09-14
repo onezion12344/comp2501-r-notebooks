@@ -1,0 +1,398 @@
+---
+title: "COMP2501 Lec 1 - R Basics"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · Lec 1 — R Basics
+
+**Course**: Introduction to Data Science and Engineering (RB Luo)  
+**Goal**: the very basics of R — objects, assignment, functions, atomic types, and data frames.
+
+> **How to use this notebook** (the loop):
+> 1. Read the concept cell. **Predict** what the output will be, out loud or in your head.
+> 2. Write the code into the **blank** cell.
+> 3. Run it. Compare against your prediction.
+> 4. Only then reveal the **Answer** cell.
+>
+> This is not about writing R fast — it's about *understanding what the code does*. The course lets you use AI to write code, but you must be able to read and predict the output yourself.
+
+---
+## Before you start: set the runtime to R
+
+This notebook needs the **R** runtime. In Colab:
+`Runtime ▸ Change runtime type ▸ R`  
+(If you opened this from GitHub, Colab may already detect R and offer to switch.)
+
+---
+## The big picture: why R
+
+The lecture makes a few key points — read them, they'll save you confusion later:
+
+- **R is not a "software engineering" language.** It was built by *statisticians* as an interactive environment for data analysis. It won't follow the conventions you know from C/Java/Python — don't fight it.
+- **Interactivity is the point.** You explore data quickly. Hence the console, not just scripts.
+- **You can save your work as scripts** — the key feature that makes analysis *reproducible*.
+- **R's superpower is visualization**, ahead of Python (pandas). We'll get there.
+
+**The running joke in the slides:** R looks easy to learn (`x <- 1`) but subtle to master (integer vs numeric, vectorization, recycling). This notebook only covers the easy half — but the *why* behind it.
+
+---
+## 1 · Objects & assignment
+
+In R, a variable is called an **object**. You assign with `<-` (a left arrow), **not** `=`.
+
+```r
+a <- 1   # assign 1 to object 'a'
+b <- 1
+c <- -1
+```
+
+This solves the quadratic formula example from the lecture: `x^2 + x - 1 = 0` → `x = (-b ± √(b²-4ac)) / 2a`.
+
+**Why `<-` and not `=`?**  
+- `=` also works in R, but is **not recommended** — it first means "give" in some contexts and can confuse.
+- `<-` reads as **"assign to"** and makes intent unambiguous.
+- When you see `x == 1`, that's **comparison** (equal). `x <- 1` is **assignment**. Different arrows, different meaning.
+
+> 💡 **Snake_case**: the lecture recommends `solution_1` over `s1`, and describes R names with `all_lower_case` + `underscores`. Be descriptive.
+
+**Task 1 — solve the quadratic.** Write `a`, `b`, `c` for `x^2 + x - 1 = 0`. Then compute the two roots using `sqrt()` and the quadratic formula.
+
+```{r}
+# YOUR CODE
+# 1. assign a, b, c
+# 2. solution_1 <- (-b + sqrt(b^2 - 4*a*c)) / (2*a)
+# 3. solution_2 <- (-b - sqrt(b^2 - 4*a*c)) / (2*a)
+# 4. print both
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+a <- 1
+b <- 1
+c <- -1
+
+solution_1 <- (-b + sqrt(b^2 - 4*a*c)) / (2*a)
+solution_2 <- (-b - sqrt(b^2 - 4*a*c)) / (2*a)
+
+solution_1
+solution_2
+```
+
+You should get approximately `0.618` and `-1.618` (the golden-ratio pair).
+</details>
+
+---
+## 2 · The workspace
+
+Every object you create lives in the **workspace**. Inspect it with:
+
+```{r}
+# YOUR CODE
+# print all objects currently in your workspace (hint: ls)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ls()
+```
+
+Note the parentheses — `ls` is a **function**, and you must *call* it with `()`. Typing `ls` without `()` just shows the function definition, not its result. Try it.
+</details>
+
+### Remove an object, and a subtlety: case-sensitivity
+
+- `rm(a)` removes object `a`. After that, `a` gives an error: `object 'a' not found`.
+- **R is case-sensitive.** `True` (uppercase T) is **not** the logical value — it's an undefined object → error. The logical values in R are `TRUE` and `FALSE` (or `T`/`F`).
+
+**Try this yourself:** remove one of your objects, then reference it. See the error.
+
+```{r}
+# YOUR CODE
+# 1. remove 'solution_1' using rm()
+# 2. print solution_1 (expect an error)
+# 3. try: True  (expect an error, not TRUE)
+# 4. print the logical TRUE
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+rm(solution_1)
+solution_1        # Error: object 'solution_1' not found
+
+True              # Error: object 'True' not found (case matters!)
+TRUE              # [1] TRUE
+```
+</details>
+
+---
+## 3 · Functions
+
+R is a **functional** language — almost everything is a function call. Two things matter most:
+
+**a) Arguments, and their defaults.** Look at `log`:
+
+```r
+log(10)        # [1] 2.302585  (natural log, base e)
+log(8, 2)      # [1] 3        (base 2)
+log(x = 8, base = 2)
+log(base = 2, x = 8)   # named args → order doesn't matter
+```
+
+The help page shows `log(x, base = exp(1))`. So `x` is **required**; `base` is **optional** with a default. Named arguments let you skip the order.
+
+**b) Looking things up.** `?log` (or `help("log")`) opens the docs. Try `?"+"` and `?"^"` for operators. (Bonus: `?l"og without parens` shows how typing a built-in function name alone just echoes its definition.)
+
+**Task 2 — predict, then confirm.** Before running, predict the output of each line:
+
+```{r}
+log(100)          # predict: ??
+log(100, 10)     # predict: ??
+log(2, 8)        # predict: ??  (careful — is this log_2(8) or log_8(2)?)
+log(base = 2, x = 8)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+log(100)          # [1] 4.60517  (natural log)
+log(100, 10)     # [1] 2        (log base 10)
+log(2, 8)        # [1] 0.3333   (this is log_8(2) = 1/3 — arg order = f(x, base))
+log(base = 2, x = 8)   # [1] 3   (now x=8, base=2 → log_2(8)=3)
+```
+
+The third line is the classic gotcha: **positional arguments** go in the order `(x, base)`, so `log(2, 8)` means log with x=2, base=8. If you meant log base 2 of 8, you must either spell out `log(base=2, x=8)` or use `log(8, 2)`.
+</details>
+
+---
+## 4 · Atomic data types
+
+Use `class()` to see an object's type. The major atomic types in R:
+
+| type | meaning | example | `class()` result |
+|------|---------|---------|------------------|
+| `numeric` | float/double | `3` | `"numeric"` |
+| `integer` | whole number | `3L` (note the L) | `"integer"` |
+| `logical` | boolean | `TRUE` | `"logical"` |
+| `character` | string | `"3"` | `"character"` |
+| `factor` | categorical | (later) | `"factor"` |
+
+**Task 3 — classify.** Predict each `class()` result, then run:
+
+```{r}
+class(3)
+class(3L)
+class(TRUE)
+class("3")
+class(3.0)
+
+# and the .is. family:
+is.numeric(3)
+is.integer(3)
+is.integer(3L)
+is.character("3")
+is.logical(TRUE)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+class(3)       # [1] "numeric"
+class(3L)      # [1] "integer"
+class(TRUE)    # [1] "logical"
+class("3")    # [1] "character"
+class(3.0)     # [1] "numeric"   <- even "3.0" is a double!
+
+is.numeric(3)      # TRUE
+is.integer(3)      # FALSE  (3 is a double, not integer — the lecture's subtle point)
+is.integer(3L)     # TRUE
+is.character("3") # TRUE
+is.logical(TRUE)   # TRUE
+```
+
+The key insight: `3` and `3L` are **different** types. `3` is a `numeric`/double; `3L` is `integer`. R auto-coerces in most cases, but the difference matters for: indexing, memory, and why `is.integer(3)` is `FALSE`.
+</details>
+
+### Integer vs numeric, and indexing
+
+The lecture's punchline: **integer is mostly used for indexing.**
+
+```r
+c(1, 2, 3, 4)[1.99] == c(1, 2, 3, 4)[1]   # TRUE — R truncates the index
+```
+
+So `c(...)` builds a vector (combine elements). `vec[1]` grabs the first element. R is **1-indexed** (starts at 1, not 0 like Python). **Try it.**
+
+```{r}
+# YOUR CODE
+# 1. build a vector of 1,2,3,4 with c()
+# 2. grab its 2nd element with [2]
+# 3. check: c(1,2,3,4)[1.99] == c(1,2,3,4)[1]
+# 4. what index is the first element in R? (1 or 0?)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+v <- c(1, 2, 3, 4)
+v[2]                        # [1] 2
+c(1, 2, 3, 4)[1.99] == c(1, 2, 3, 4)[1]   # TRUE
+# first element is index 1 (R is 1-indexed, unlike Python's 0-indexed)
+```
+</details>
+
+---
+## 5 · Data frames
+
+A single number isn't useful for real data. The workhorse of R is the **data frame**: a table with rows (observations) and columns (variables), where each column can be a different type.
+
+The lecture uses the `murders` dataset (from the `dslabs` package) and base datasets. We'll use a built-in base dataset first, then optionally the murders one.
+
+**Three functions to inspect any data frame:**
+- `head(df)` / `tail(df)` — first/last 6 rows
+- `str(df)` — structure: how many obs/vars, and the type of each column
+- `names(df)` — the column names
+
+```{r}
+# YOUR CODE — inspect the built-in 'mtcars'
+# 1. load it: data("mtcars")
+# 2. head(mtcars)
+# 3. str(mtcars)
+# 4. names(mtcars)
+# 5. dim(mtcars)  (rows, columns)
+# 6. how many rows? how many columns?
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+data("mtcars")
+head(mtcars)
+str(mtcars)
+names(mtcars)
+dim(mtcars)     # 32 11
+# 32 rows, 11 columns
+```
+</details>
+
+### The accessor: `$`
+
+To grab a *single column* of a data frame, use `$`:
+
+```r
+mtcars$mpg          # the full mpg column as a vector
+```
+
+A crucial property: **the order of a column preserves the row order** — this is what lets you combine columns later.
+
+```{r}
+# YOUR CODE
+# 1. mtcars$mpg — print the mpg column
+# 2. mtcars$cyl
+# 3. compute the mean of the mpg column with mean()
+# 4. what is the max hp?  (max(mtcars$hp))
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+mtcars$mpg
+mtcars$cyl
+mean(mtcars$mpg)     # 20.09062
+max(mtcars$hp)       # 335
+```
+</details>
+
+### (Optional) the murders dataset from `dslabs`
+
+The lecture's running example uses `dslabs::murders`. If you want to follow along, install and load it:
+
+```{r}
+# install.packages("dslabs")   # uncomment to install once
+library(dslabs)
+data("murders")
+class(murders)         # data.frame
+str(murders)           # 51 obs, 5 vars: state, abb, region (factor), population, total
+head(murders)
+names(murders)
+murders$region         # a factor
+```
+
+---
+## 6 · Final check — predict the output
+
+Now the real test. For **each** line, write down what you expect, then run. This is exactly the "understand, don't just run" skill the course wants.
+
+```{r}
+# Q1
+x <- 5
+y <- "5"
+class(x)
+class(y)
+x + 1          # works?
+# y + 1        # what would this do? (uncomment after predicting)
+```
+
+<details>
+<summary><b>Q1 answer</b></summary>
+
+```r
+class(x)    # "numeric"
+class(y)    # "character" — "5" is a STRING, not a number
+x + 1       # [1] 6  (numeric + numeric)
+y + 1       # Error: non-numeric argument to binary operator  (can't add string + number)
+```
+
+The trap: `"5"` looks like 5 but is a **character**, and you can't do arithmetic on it. This is the difference between data that's *meant* to be a number and data that's *stored* as text.
+</details>
+
+```{r}
+# Q2 — the vectorization question
+v <- c(1, 2, 3, 4, 5)
+v * 2
+v + c(10, 20)
+# what does R do when the lengths don't match? (predict, then run)
+```
+
+<details>
+<summary><b>Q2 answer</b></summary>
+
+```r
+v * 2             # [1]  2  4  6  8 10   (elementwise multiply — no loop needed!)
+v + c(10, 20)     # [1] 11 22 13 24 15   (RECYCLING: R recycles the shorter vector 10,20 → 10,20,10,20,10)
+```
+
+Two huge R ideas here:
+- **Vectorization**: you operate on the *whole* vector at once, no `for` loop. This is why R is fast.
+- **Recycling**: when lengths differ, R repeats the shorter one. Great when intended (b + 1), dangerous when not.
+
+Challenge: `v + c(10, 20, 30)` — what happens? Try it. Does R warn you?
+</details>
+
+---
+## Recap — what you should now be able to explain
+
+1. Why R uses `<-` instead of `=`, and what each means.
+2. Why calling `ls` alone (no parens) doesn't list objects.
+3. The difference between `3`, `3L`, `"3"`, and `TRUE` — and what `class()` says about each.
+4. Why `is.integer(3)` is `FALSE`.
+5. R being 1-indexed vs Python being 0-indexed.
+6. What a data frame is, and how `$`, `str()`, `head()`, `names()`, `dim()` help you inspect one.
+7. Vectorization and recycling.
+
+If you can answer these without looking, you've genuinely got Lec 1. Next: `lec02-tidyverse` → dplyr verbs and importing data.

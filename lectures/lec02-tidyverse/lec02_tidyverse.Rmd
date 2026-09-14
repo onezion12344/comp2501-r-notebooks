@@ -1,0 +1,445 @@
+---
+title: "COMP2501 Lec 2 - Tidyverse and Data Import"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · Lec 2 — R Markdown, tidyverse & Data Import
+
+**Course**: Introduction to Data Science and Engineering (RB Luo)
+
+This lecture is in **three parts**:
+1. **R Markdown** — the format assignments are handed out/received in. Essential.
+2. **tidyverse** — `dplyr` verbs, the pipe, `purrr`, conditionals.
+3. **Importing data** — `read_csv`, working directory, paths, encoding.
+
+> **How to use:** predict → fill the blank → run → check the collapsed answer. The course's rule of thumb is that you must *understand* code, not just run it — these blanks are built for that.
+
+---
+## Part 1 · R Markdown
+
+**R Markdown (.Rmd)** lets you create a polished, reproducible document — text + code + output in one file. Its two key ideas:
+
+- **Markdown** (a lightweight markup language, created 2004 by John Gruber & Aaron Swartz) for the styling.
+- **Code chunks** (```{r} ... ```) that execute when you **knit** the file. Output (code, results, plots) gets embedded into the final HTML/PDF.
+
+> The lecture stresses: **assignments are handed out and received as R Markdown format.** If you make a `.Rmd`, you can also knit it to a PDF/Word to submit. This is the single most practical thing in Lec 2.
+
+**(In this Colab notebook, markdown cells + code cells give you the same feel — but real `.Rmd` knitting needs RStudio/posit Cloud. See `tutorials/tut01-env-setup` for which to use.)
+
+### Markdown cheat sheet (the parts the lecture emphasizes)
+
+| Want | Type this | Renders as |
+|------|-----------|------------|
+| Heading | `# Title` (1-6 `#`) | **Title** |
+| Italic | `*text*` or `_text_` | *text* |
+| Bold | `**text**` | **text** |
+| Bullet list | `- item` | • item |
+| Numbered list | `1. item` | 1. item |
+| Link | `[text](url)` | [text](url) |
+| Image | `![alt](image_url)` | image |
+| Quote | `> text` | blockquote |
+| Checklist | `- [x] done` / `- [ ] todo` | ☑ / ☐ |
+| Inline code | `` `code` `` | `code` |
+| Code block | ```` ``` ```` | code block |
+| Horizontal rule | `---` | ─── |
+
+**The classic gotchas from the lecture:**
+- **Line break is counter-intuitive.** A single newline does *not* break the line. Add **two spaces** at the end of a line to force a break.
+- **BUT two spaces don't work in headings** — there you need the HTML tag `<br>` (and a newline after it).
+- In a **table**, to show a literal space you may need `&nbsp;` (non-breaking space) so the separator doesn't get confused.
+
+**Task 1 — write the markdown.** This is a Markdown cell, so the code below is markdown, not R. Fill in a real markdown block of your own: a heading, a bolded sentence, a link, and a two-item bullet list. (You can edit this cell or add a new one.)
+
+# My heading
+**This is bold.**
+
+[Click me](https://example.com)
+
+- first bullet
+- second bullet  
+  (note the two trailing spaces for the line break below)
+  and this is on a new line because of those two spaces.
+
+### R code chunks: knitr options
+
+In an `.Rmd`, chunks can be configured:
+
+```markdown
+```{r}
+summary(cars)
+```          # shows code AND results
+
+```{r, echo=FALSE}
+plot(pressure)
+```          # shows only the result (hides the code)
+```
+
+Other handy options: `echo=FALSE`, `include=FALSE`, `eval=FALSE` (run but skip / don't show). This is what keeps reports clean. In Colab, the closest is how the notebook displays code vs output — but the *concept* of chunk options matters when you knit.
+
+*If you want to actually knit a `.Rmd` file, copy the lec02 Rmd (in this folder) and knit it in RStudio/posit Cloud.*
+
+---
+## Part 2 · tidyverse
+
+### Tidy data
+
+The whole course works with **data frames**. A table is in **tidy format** when:
+- each **row** = one observation
+- each **column** = one variable
+
+`murders` (state, abb, region, population, total) is tidy. The `co2` dataset is **not** tidy (each *month* is its own column) — a common exam-style question is to spot which format is tidy.
+
+### Load the library
+
+```r
+library(tidyverse)
+```
+
+> **Why we don't get an error with `total` / `population` inside `mutate`?** Because dplyr functions know to look for variable names *as columns of the data frame you pass in first*. So `mutate(murders, rate = total/population)` finds `murders$total` and `murders$population` — no `$` needed. That's the key readability win of dplyr.
+
+```{r}
+# Load packages (tidyverse brings dplyr, readr, ggplot2, purrr, tidyr, ...)
+library(tidyverse)
+cat('tidyverse loaded OK\n')
+```
+
+### The 5 core dplyr verbs + the pipe
+
+| verb | what it does | acts on |
+|------|-------------|---------|
+| `mutate` | add/overwrite a column | columns |
+| `filter` | keep rows matching a condition | rows |
+| `select` | keep chosen columns | columns |
+| `arrange` | sort rows (+`desc()`) | rows |
+| `summarize` (+`group_by`) | collapse groups to summaries | rows ↓ |
+
+**The pipe `|>`** feeds the left side in as the *first argument* of the right side, so chains read like a recipe top-to-bottom:
+```r
+murders |> filter(rate <= 0.71)
+# is the same as: filter(murders, rate <= 0.71)
+```
+The lecture shows `16 |> sqrt()` = `sqrt(16)`, and `16 |> sqrt() |> log2()` = `log2(sqrt(16))`.
+
+**Task 2 — predict then confirm.** For the `murders` dataset (need `dslabs`), predict each output, then run.
+
+```{r}
+# install.packages('dslabs')   # run once if needed
+library(dslabs)
+data('murders')
+
+# 1. add a murder rate column, per 100,000
+murders <- murders |> mutate(rate = total / population * 100000)
+head(murders)
+
+# 2. filter to low murder rate
+murders |> filter(rate <= 0.71)
+
+# 3. select only two columns, then filter
+murders |> select(state, region, rate) |> filter(rate <= 0.71)
+
+# 4. what does nrow(murders) give, and how many rows pass filter(rate <= 0.71)?
+```
+
+<details>
+<summary><b>Reveal — key points</b></summary>
+
+- `mutate(rate = total/population*100000)` — `total`/`population` resolve to columns automatically.
+- `filter(rate <= 0.71)` keeps only rows where the rate is low (Hawaii, Iowa, New Hampshire, North Dakota, Vermont).
+- `select(...) |> filter(...)` — pipe threads `select`'s output into `filter`.
+- The **average murder rate** is a classic trap: `mean(rate)` gives the mean of *per-state* rates, which is **not** the US rate. The correct national rate is `sum(total)/sum(population)*100000`. Rates can't simply be averaged.
+</details>
+
+**Task 3 — separate the average-rate trap.** Compute BOTH the (flawed) mean of per-state rates and the (correct) national rate. They differ. This is exactly the kind of thing exams test.
+
+```{r}
+# YOUR CODE
+# 1. mean of per-state rates (the WRONG way)
+# murders |> summarize(mean(rate))
+#
+# 2. correct national rate (weighted by population)
+# murders |> summarize(rate = sum(total)/sum(population)*100000)
+#
+# Why do these differ?
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+murders |> summarize(mean(rate))                      # 2.779125  (unweighted)
+murders |> summarize(rate = sum(total)/sum(population)*100000)   # 3.034555 (weighted)
+```
+
+They differ because `mean(rate)` treats every state as **equal weight** regardless of population. Big states (like California, millions of people) should pull the national rate more. Dividing total murders by total population does that weighting correctly. **Never average a ratio that's already per-population.**
+</details>
+
+### Sorting, top_n, and the placeholder
+
+- `arrange(x)` sorts ascending; `arrange(desc(x))` descending; `arrange(a, desc(b))` is **nested** sorting.
+- `top_n(n, col)` shows the top n rows **without sorting the whole table**.
+- `_` is the **placeholder**: `2 |> log(8, base = _)` passes 2 into the *non-first* argument.
+
+```{r}
+# YOUR CODE — predict each, then run
+murders |> arrange(population) |> head()
+murders |> arrange(desc(rate)) |> head()
+murders |> arrange(region, desc(rate)) |> head()   # nested: region asc, then rate desc
+murders |> top_n(5, rate)
+
+# THE PLACEHOLDER:
+log(8, base = 2)
+2 |> log(8, base = _)   # same result — 2 goes into the 'base' argument
+```
+
+### group_by → summarize (split-apply-combine)
+
+`group_by(...)` splits the table into groups; `summarize` applies a summary **per group**. Conceptually: a grouped data frame is like *many tables with the same columns and non-overlapping rows*.
+
+```{r}
+# predict, then run — min/median/max rate per region, with a count
+murders |>
+  group_by(region) |>
+  summarize(min = min(rate), median = median(rate), max = max(rate), n = n())
+
+# n() counts rows in each group
+```
+
+### Multiple summaries — a small function
+
+To get several statistics as **columns** (not rows), define a helper that returns a data frame:
+
+```r
+min_median_max <- function(x) {
+  qs <- quantile(x, c(0, 0.5, 1))
+  data.frame(min = qs[1], median = qs[2], max = qs[3])
+}
+```
+
+**Try it** on the heights dataset (`dslabs`) filtered to females.
+
+```{r}
+# YOUR CODE
+min_median_max <- function(x) {
+  qs <- quantile(x, c(0, 0.5, 1))
+  data.frame(min = qs[1], median = qs[2], max = qs[3])
+}
+
+data('heights')
+heights |> filter(sex == 'Female') |> summarize(min_median_max(height))
+```
+
+<details>
+<summary><b>Reveal</b></summary>
+
+You should get a one-row table: min ≈ 51, median ≈ 64.98, max ≈ 79.
+
+The trick: `summarize` expects each summary to be a single value, but here `min_median_max(height)` returns a **data frame** — R spreads those columns into the result. If you'd written `quantile(height, c(0,0.5,1))` directly, summarize would instead stack them as rows; wrapping in a data frame flips them to columns.
+</details>
+
+### purrr: map / map_dbl / map_df
+
+`sapply` (base R) applies a function to each element but its output type is unpredictable. **purrr** gives typed, predictable versions:
+
+- `map(x, f)` → always a **list**
+- `map_dbl(x, f)` → always a **numeric vector**
+- `map_df(x, f)` → always a **data frame**
+
+The lecture's example: `compute_s_n(n) = 1² + ... + n²`, applied to `n = 1:25`.
+
+```{r}
+# YOUR CODE — predict the type of each result
+library(purrr)
+
+compute_s_n <- function(n) { sum((1:n)^2) }
+n <- 1:25
+
+s_n_list <- map(n, compute_s_n)
+class(s_n_list)          # predict: ?
+
+s_n_dbl <- map_dbl(n, compute_s_n)
+class(s_n_dbl)           # predict: ?
+
+# map_df needs the function to return a data frame/list:
+compute_s_n_df <- function(n) { data.frame(n = n, sum = sum((1:n)^2)) }
+s_n_df <- map_df(n, compute_s_n_df)
+class(s_n_df)            # predict: ?
+head(s_n_df)
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+class(s_n_list)   # "list"
+class(s_n_dbl)    # "numeric"
+class(s_n_df)     # "data.frame"
+```
+
+The advantage: the output **type is guaranteed**, so downstream code won't break if your function sometimes returns a different type (which `sapply` silently does).
+</details>
+
+### Tidyverse conditionals: case_when & between
+
+- `case_when(...)` is a vectorized, multi-value `ifelse`. Evaluation is top-to-bottom, first match wins, and the last line is usually `TRUE ~ "else"`.
+- `between(x, a, b)` is shorthand for `x >= a & x <= b`.
+
+```{r}
+# YOUR CODE — predict each output
+x <- c(-2, -1, 0, 1, 2)
+case_when(
+  x < 0   ~ 'Negative',
+  x > 0   ~ 'Positive',
+  TRUE    ~ 'Zero'
+)
+
+between(x, 0, 1)         # predict: ?
+
+# a richer example: classify states into regions using abbr
+murders |>
+  mutate(group = case_when(
+    abb %in% c('ME','NH','VT','MA','RI','CT') ~ 'New England',
+    abb %in% c('WA','OR','CA')                ~ 'West Coast',
+    region == 'South'                        ~ 'South',
+    TRUE                                     ~ 'Other'
+  )) |>
+  group_by(group) |>
+  summarize(rate = sum(total) / sum(population) * 10^5)
+```
+
+<details>
+<summary><b>Reveal</b></summary>
+
+```r
+case_when(x<0~'Negative', x>0~'Positive', TRUE~'Zero')
+# [1] "Negative" "Negative" "Zero"     "Positive" "Positive"
+
+between(x, 0, 1)   # [1] FALSE FALSE  TRUE  TRUE FALSE
+```
+
+The `case_when` classification groups the states and computes a per-group weighted rate. Note the `TRUE ~ 'Other'` catch-all at the end — that's the `else`.
+
+`between` is pure sugar for `x >= 0 & x <= 1`, which is much cleaner in a pipe.
+</details>
+
+---
+## Part 3 · Importing data
+
+So far we used built-in datasets. Real data is in files: **csv**, tsv, xls/xlsx, txt, json, and binary (parquet/feather/hdf5/zarr).
+
+### `read_csv` (from `readr`, part of tidyverse)
+
+- Reads a local file or a URL. Auto-detects column types (`chr` / `dbl`, etc.) — check with `spec()`.
+- Uses comma as delimiter by default; `read_csv2` for semicolon, `read_tsv` for tab, `read_delim` for custom.
+- `read_excel` (from `readxl`) for Excel; picks sheet via the `sheet` argument.
+
+The lecture's example URL: `https://raw.githubusercontent.com/rafalab/dslabs/master/inst/extdata/murders.csv`
+
+```{r}
+# YOUR CODE
+# 1. read the murders.csv from URL using readr::read_csv
+# 2. inspect with head() and spec()
+#    spec(murders) shows the per-column type inferences
+# 3. what column types does read_csv guess for 'state', 'abb', 'region', 'population', 'total'?
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+library(readr)
+url <- 'https://raw.githubusercontent.com/rafalab/dslabs/master/inst/extdata/murders.csv'
+murders_csv <- read_csv(url)
+head(murders_csv, 3)
+spec(murders_csv)
+```
+
+`spec()` will show `state`/`abb`/`region` as `col_character()` and `population`/`total` as `col_double()`. readr guesses a column as character vs double based on the values it sees.
+
+To force types or silence the message, use `show_col_types = FALSE` or specify `col_types = ...`.
+</details>
+
+```{r}
+# COVID example from the lecture (also on the course server):
+covid <- read_csv('http://www.bio8.cs.hku.hk/comp2501/covid.csv', show_col_types = FALSE)
+head(covid)
+nrow(covid)   # how many rows?
+```
+
+### Working directory & paths
+
+- **Absolute path**: from the root (`/Users/...`, `C:\...`).
+- **Relative path**: relative to your current working directory (`subdir/file.txt`, `../file.txt`).
+- Prefer **relative** paths (they're portable), and keep all your data/code/files in one **working directory**.
+
+Helpers:
+- `getwd()` / `setwd(path)` — view / change the working directory
+- `file.path(dir1, dir2, file)` — compose paths safely (no more `\\` confusion)
+- `normalizePath(rel)` — convert relative → absolute
+- `list.files()` — list files in a folder
+- `file.exists(path)` — check if a file exists
+
+**Try them.**
+
+```{r}
+# YOUR CODE — explore the working directory
+getwd()
+list.files()          # what's here?
+file.exists('murders.csv')   # does the csv exist in cwd?
+file.path('data', 'subdir', 'file.txt')   # safely compose a path
+normalizePath(getwd())
+
+# compare: absolute vs relative path for a file you have
+```
+
+### Encoding
+
+**Encoding** = how text maps to bits. RStudio defaults to **UTF-8**.
+
+| Encoding | chars | notes |
+|----------|-------|-------|
+| ASCII | English only | 1 byte/char |
+| UTF-8 | all Unicode | variable length, back-compatible with ASCII |
+| UTF-16 | all Unicode | 2 or 4 bytes/char |
+| GBK / GB18030 | Simplified Chinese | GB18030 superset of GBK |
+| Big5 | Traditional Chinese (HK/Taiwan) | 2 bytes/char |
+
+If a Chinese/UTF-8 file reads with garbled text, you may need `locale(locale = 'GB18030')` or similar. Try it if a file mis-reads.
+
+### Good habits when storing data (from the lecture)
+
+- Be **consistent**; give things good names.
+- Write dates as **YYYY-MM-DD**; no empty cells; one thing per cell; make it a **rectangle**.
+- Create a **data dictionary**; no calculations in raw files; don't use font color/highlighting as data.
+- Make **backups**; save data as **text files**.
+
+These matter because real datasets come messy, and the fix is often at the *storage* stage, not in your analysis.
+
+---
+## Recap — what you should now be able to explain
+
+**R Markdown**
+1. What `.Rmd` is and why it matters (assignments are given/received as it).
+2. How to force a line break (two spaces; `<br>` in headings); the `&nbsp;` trick in tables.
+3. What `{r, echo=FALSE}` does.
+
+**tidyverse**
+4. What tidy data means (row = observation, col = variable).
+5. Why `total`/`population` work without `$` inside `mutate` (dplyr knows column names from the first arg).
+6. `filter` (rows) vs `select` (columns); `mutate` vs `summarize`.
+7. What `|>` does; what `_` (placeholder) does.
+8. The average-rate trap — why you can't `mean()` a per-population ratio.
+9. `group_by` → `summarize` = split-apply-combine; `n()` counts.
+10. `map` / `map_dbl` / `map_df` vs `sapply` — why purrr's output types are safer.
+11. `case_when` (top-to-bottom, `TRUE ~` else) and `between`.
+
+**Importing data**
+12. When to use `read_csv` / `read_csv2` / `read_tsv` / `read_delim` / `read_excel`.
+13. Absolute vs relative path; `getwd`/`setwd`/`file.path`/`list.files`/`file.exists`.
+14. What encoding is and why UTF-8 is the default.
+
+If you can explain all 14 without looking, you've genuinely got Lec 2. Next: Lec 3 — data visualization with `ggplot2`.
