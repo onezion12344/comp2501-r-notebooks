@@ -1,0 +1,327 @@
+---
+title: "COMP2501 In-class Exercises 02"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · In-class Exercises 02 (interactive)
+
+The official **Exercises 02** — the lecture calls it **"the cookbook"**: seven plots of the `iris` dataset, each one introducing a different `ggplot2` geometry.
+
+**Packages:** `dplyr`, `ggplot2`, `datasets` (all in `tidyverse` except the last).
+
+```r
+install.packages(c('dplyr', 'ggplot2'))   # once, if needed
+library(dplyr)
+library(ggplot2)
+library(datasets)
+```
+
+> 🎓 **This is the most exam-relevant exercises set for plotting.** The seven parts are a *lookup table*: question type → geometry. Learn the mapping and you can answer any "draw a plot that shows X" question.
+
+## The mapping you're actually learning
+
+| If the question is about... | Use |
+|---|---|
+| relationship between **two continuous** variables | `geom_point` (scatter) |
+| relationship between two continuous, **split by category** | `geom_point` + `color =` |
+| distribution of a continuous variable **by category** | `geom_boxplot` |
+| distribution of **one continuous** variable | `geom_histogram` |
+| **shape** of a distribution by category | `geom_violin` |
+| **comparing** distributions across categories | `geom_density` + `color =` |
+
+Every part below is one of these six. Notice which ones take a **categorical x** and which take a **continuous x** — that distinction is the whole game.
+
+---
+## Part a — Inspect the data first
+
+Load `iris` and print (1) the first 6 rows, (2) the dimensions, (3) the variable names.
+
+**Why first?** You cannot choose a geometry until you know which columns are **continuous** and which are **categorical**. This is the Lec 1/2 habit: always `head` / `dim` / `names` before plotting.
+
+```{r}
+# YOUR CODE
+# 1. data('iris')
+# 2. head(iris)
+# 3. dim(iris)
+# 4. names(iris)
+# 5. str(iris)   <- bonus: which columns are numeric? which is a factor?
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+data('iris')
+head(iris)
+dim(iris)      # 150 5
+names(iris)    # "Sepal.Length" "Sepal.Width" "Petal.Length" "Petal.Width" "Species"
+str(iris)      # 4 numeric + 1 factor
+```
+
+**What you should notice:**
+
+- **150 observations, 5 variables.**
+- Four columns are `numeric` (continuous): `Sepal.Length`, `Sepal.Width`, `Petal.Length`, `Petal.Width`.
+- One column is a `factor` (categorical): `Species`, with **3 levels** — setosa, versicolor, virginica.
+
+**This structure determines every remaining part:**
+- continuous × continuous → scatter (b, c)
+- continuous × categorical → boxplot / violin (d, f)
+- single continuous → histogram (e)
+- continuous grouped by category → density (g)
+
+**Predict:** with 3 species × 50 flowers each, what will the boxplot in (d) look like? (Three boxes, roughly comparable sizes — the dataset is deliberately balanced.)
+</details>
+
+---
+## Part b — Scatter: the basic relationship plot
+
+Plot `Sepal.Length` (x) against `Sepal.Width` (y). Set a plot title and axis titles.
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = ?, y = ?)) +
+#   geom_point() +
+#   ggtitle('...') + xlab('...') + ylab('...')
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_point() +
+  ggtitle('Relationship between Sepal Length and Sepal Width') +
+  xlab('Sepal Length (cm)') +
+  ylab('Sepal Width (cm)')
+```
+
+**Reading the plot:** there's a **weak positive** relationship — the cloud is broad, not a tight line. (Sepal width doesn't predict sepal length well.)
+
+**Two things to notice:**
+
+1. **`aes()` sees the column names directly** — you wrote `Sepal.Length`, not `iris$Sepal.Length`. That's the Lec 3 behaviour: `aes()` looks up names in the data you passed.
+2. **Titles are not optional.** The lecture's line: *"Plots without labels and titles are like babies without name, it can't happen."* Note the answer uses the `ggtitle`/`xlab`/`ylab` style — `labs(title=, x=, y=)` does the same thing.
+
+**Try it:** what happens if you put `color = 'blue'` **inside** `aes()` instead of outside? (You get a legend labelled "blue" and a non-blue color — because you mapped a constant to a color scale. This is the Lec 3 §1.8 trap.)
+</details>
+
+---
+## Part c — Scatter colored by category
+
+Same idea, but now `Petal.Length` vs `Petal.Width`, **colored by `Species`**.
+
+**Before you run it: predict.** Petal measurements separate species far better than sepal measurements. Will you see three distinct clusters, or one blob?
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) +
+#   geom_point() + titles...
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) +
+  geom_point() +
+  ggtitle('Relationship between Petal Length and Petal Width') +
+  xlab('Petal Length (cm)') +
+  ylab('Petal Width (cm)')
+```
+
+**This is the most informative plot in the whole exercise set.** Compare it to (b):
+
+| | Sepal (b) | Petal (c) |
+|---|---|---|
+| separation | one overlapping cloud | **three nearly disjoint clusters** |
+| conclusion | weak relationship | petal size **identifies the species** |
+
+That's why botanists measure petals — and it's a real lesson in **choosing your variables**: the same dataset can look uninformative or beautifully structured depending on which columns you plot.
+
+**Why `color = Species` goes inside `aes()`:** the color is determined by a *feature of each observation* (its species), so it's a **mapping**. ggplot2 automatically assigns a color per level and adds a legend. Put it outside `aes()` and every point would be one color.
+
+**Predict:** which species is linearly separable from the other two? (Setosa — the small-petal cluster on the left. Versicolor and virginica overlap slightly.)
+</details>
+
+---
+## Part d — Boxplot: distribution by category
+
+Distribution of `Petal.Length` for each `Species`.
+
+**Note the shape of the call:** here x is **categorical** and y is **continuous** — the opposite of (b)/(c).
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = Species, y = Petal.Length)) +
+#   geom_boxplot() + titles...
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Species, y = Petal.Length)) +
+  geom_boxplot() +
+  ggtitle('Distribution of Petal Length by Species') +
+  xlab('Species') +
+  ylab('Petal Length (cm)')
+```
+
+**What the boxplot gives you that the scatter didn't:** a **summary per group** — median, IQR, and outliers, all comparable at a glance. From the plot:
+
+- **setosa**: short petals, tight spread, no overlap with the others
+- **versicolor**: middle, moderate spread
+- **virginica**: longest, widest spread
+
+**Read the anatomy** (Lec 3 §2.6): the box is Q1→Q3 (the middle 50%), the line inside is the **median**, the whiskers extend to the most extreme non-outliers, and dots beyond them are **outliers** — defined as below `Q1 − 1.5·IQR` or above `Q3 + 1.5·IQR`.
+
+**Predict:** which species has the widest IQR? (Virginica.) Which has outliers? (Look at the plot — virginica has a few low values.)
+</details>
+
+---
+## Part e — Histogram: one continuous variable
+
+Distribution of `Petal.Width`.
+
+**New thing here:** the **binwidth** argument. The answer uses `binwidth = 0.2` — but why not the default?
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = Petal.Width)) +
+#   geom_histogram(binwidth = ?) + titles...
+#
+# Try the default first (no binwidth), then 0.2, then 0.05, then 0.5
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Petal.Width)) +
+  geom_histogram(binwidth = 0.2) +
+  ggtitle('Distribution of Petal Width') +
+  xlab('Petal Width (cm)') +
+  ylab('Frequency')
+```
+
+**Try the four binwidths and watch the story change:**
+
+| binwidth | what you see |
+|---|---|
+| default (0.3) | a rough shape, some detail lost |
+| `0.05` | very jagged — noise starts to look like structure |
+| **`0.2`** | **the answer's choice — bimodality is visible without noise** |
+| `0.5` | over-smoothed — the two groups blur together |
+
+**The key insight:** the histogram is **bimodal**. There's a cluster around 0.2 cm and another around 1.3 cm — because this is really **two species' populations overlapping**, not one unimodal distribution.
+
+> **This is Lec 3's core lesson about binwidth:** it's a *modelling choice, not a formatting detail*. Too small = noise; too big = erased structure. The exercise's `0.2` is a deliberate, defensible choice.
+
+**Predict:** ggplot prints `stat_bin()` warnings sometimes. What is it warning about? (It suggests a bin count — `bins = 30` — when you don't specify width. It's a hint, not an error.)
+</details>
+
+---
+## Part f — Violin plot: the distribution's shape
+
+Distribution of `Sepal.Length` by `Species`.
+
+**Why not just reuse the boxplot from (d)?** Because the boxplot reduces each group to five numbers — it can **hide** bimodality and skew. The violin shows the actual shape.
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = Species, y = Sepal.Length)) +
+#   geom_violin() + titles...
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Species, y = Sepal.Length)) +
+  geom_violin() +
+  ggtitle('Distribution of Sepal Length by Species') +
+  xlab('Species') +
+  ylab('Sepal Length (cm)')
+```
+
+**What a violin adds:** the width of each "violin" at a given height shows **how many observations** are at that value. Wider = more common.
+
+**Compare (d) and (f) directly** — run both and put them side by side:
+
+```r
+# d: boxplot
+ggplot(iris, aes(Species, Sepal.Length)) + geom_boxplot()
+# f: violin
+ggplot(iris, aes(Species, Sepal.Length)) + geom_violin()
+```
+
+**Predict:** which one would reveal a bimodal distribution *within* a species if one existed? (The violin — a boxplot would show a normal-looking box and median.)
+
+**Which to use when:**
+- **Boxplot** — comparing many groups compactly; outliers matter.
+- **Violin** — the *shape* is the story; few groups.
+
+> **Optional:** the lecture's combined form overlays both: `geom_violin() + geom_boxplot(width = 0.1)`. Try it — you get shape *and* the five-number summary.
+</details>
+
+---
+## Part g — Density plot: comparing distributions
+
+Distribution of `Sepal.Width` by `Species`.
+
+**The difference from (f):** the violin puts each species in its own column. The density plot puts them **all on the same axis**, so you can compare *where they sit relative to each other*.
+
+```{r}
+# YOUR CODE
+# ggplot(data = iris, aes(x = Sepal.Width, color = Species)) +
+#   geom_density() + titles...
+```
+
+<details>
+<summary><b>Reveal answer</b></summary>
+
+```r
+ggplot(data = iris, aes(x = Sepal.Width, color = Species)) +
+  geom_density() +
+  ggtitle('Distribution of Sepal Width by Species') +
+  xlab('Sepal Width (cm)') +
+  ylab('Density')
+```
+
+**Reading it:** `color = Species` draws **three overlapping curves** on one axis. Note the y-axis is now **density**, not count — the area under each curve sums to 1 (Lec 3 §2.4).
+
+**The finding:** sepal width is the *least* discriminating measurement — the three curves overlap heavily. Contrast with petal measurements (c), which separated cleanly. **The exercise set is quietly teaching you variable selection.**
+
+> **Try it with `fill`:**
+> ```r
+> ggplot(iris, aes(Sepal.Width, color = Species, fill = Species)) +
+>   geom_density(alpha = 0.5)
+> ```
+> `color` = the **line**, `fill` = the **area**, `alpha` = **transparency**. Without `alpha`, the last-drawn curve hides all the ones beneath it — which is why overlapping densities almost always need transparency.
+</details>
+
+---
+## Recap — the cookbook
+
+| Part | Question | x | y | color | geometry |
+|---|---|---|---|---|---|
+| b | relationship, 2 continuous | continuous | continuous | — | `geom_point` |
+| c | relationship, by category | continuous | continuous | **categorical** | `geom_point` |
+| d | distribution by category | **categorical** | continuous | — | `geom_boxplot` |
+| e | distribution of one variable | continuous | *(computed)* | — | `geom_histogram` |
+| f | shape by category | **categorical** | continuous | — | `geom_violin` |
+| g | compare distributions | continuous | *(computed)* | **categorical** | `geom_density` |
+
+**The three things this exercise set actually tests:**
+
+1. **Which variable goes on which axis** — categorical vs continuous decides the geometry.
+2. **Inside vs outside `aes()`** — `aes(color = Species)` (a mapping, auto-legend) vs `color = 'blue'` (a fixed value, no legend).
+3. **Choosing between the distribution plots** — histogram (one variable), boxplot (compact comparison, outliers), violin (shape), density (overlaid comparison). Same data, four different questions.
+
+**Self-check without looking:** you're asked to "show how petal width varies across the three species, including whether any group has two peaks." Which geometry do you reach for, and why *not* the other three? (Violin — peaks are the point, and boxplot would hide them; histogram can't split by group without faceting; density would work too, and is the other defensible answer.)
