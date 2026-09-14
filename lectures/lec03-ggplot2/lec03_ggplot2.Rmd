@@ -1,0 +1,1214 @@
+---
+title: "COMP2501 Lec 3 - Data Visualization with ggplot2"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+<!-- Knit this in RStudio or posit Cloud. Generated from the matching .ipynb. -->
+
+# COMP2501 · Lec 3 — Data Visualization with ggplot2 (and in practice)
+
+**Course**: Introduction to Data Science and Engineering (RB Luo)
+
+Three parts:
+
+1. **Why visualize** — and the grammar of graphics behind `ggplot2`.
+2. **Visualizing distributions** — histograms, densities, boxplots, Q-Q plots.
+3. **In practice** — the Gapminder / Hans Rosling case study, faceting, time series, log scales.
+
+> **How to use:** predict → fill the blank → run → reveal. Plotting is *muscle memory*: the lecturer's own advice is **don't memorize the functions** — keep the cheat sheet handy and build up a personal collection of working snippets.
+>
+> [ggplot2 cheat sheet](https://github.com/rstudio/cheatsheets/blob/main/data-visualization.pdf) — have this open in a second tab.
+
+---
+## Setup
+
+```r
+library(tidyverse)   # includes ggplot2, dplyr
+library(dslabs)      # murders, heights, gapminder
+install.packages(c("dslabs", "ggthemes", "ggrepel"))   # once, if needed
+```
+
+`ggplot2` facts worth remembering:
+- **gg = "grammar of graphics"**. Learn a handful of building blocks and you can build hundreds of plots.
+- It assumes your data is **tidy**.
+- Plots are built in **layers**, added one at a time with `+`.
+- Other R graphics systems exist (`grid`, `lattice`), but `ggplot2` won.
+
+---
+# Part 1 · Why visualize, and how ggplot2 thinks
+
+## 1.1 A table vs a plot
+
+Look at `murders` as numbers for 10 seconds, then look at the plot for 10 seconds:
+
+```r
+library(dslabs)
+data(murders)
+head(murders)
+```
+
+Now answer from the *table*: which state has the largest population? Which has the smallest? How does murder rate vary by region?
+
+You can't — not quickly. Now:
+
+```r
+murders |> ggplot(aes(population/10^6, total, label = abb)) +
+  geom_point(size = 1.5) +
+  scale_x_log10() + scale_y_log10()
+```
+
+The same questions take seconds. **That is the entire argument for visualization.**
+
+> John W. Tukey, the father of exploratory data analysis (EDA): *"The greatest value of a picture is when it forces us to notice what we never expected to see."*
+
+**Data visualization is the strongest tool of EDA.** Many widely-used analysis tools were *initiated* by discoveries made through EDA.
+
+## 1.2 Where visualization shows up
+
+The lecture runs through examples to make the point that this is not an academic exercise:
+
+- **John Snow's cholera map (1854)** — bar plots of deaths overlaid on a street map, which traced the outbreak to a single water pump. Arguably the founding act of epidemiology.
+- **JHU COVID-19 dashboard** — the map/dashboard the whole world watched.
+- **Hong Kong population pyramid (Dec 2020)** — surplus of males at younger ages, surplus of females at older ages. A pattern you would *not* catch from summary statistics.
+- **Hans Rosling's animated bubble chart** — "moving targets are more visible". Animation made a 50-year trend legible.
+- **Spotify Wrapped**, **HK Observatory rainfall maps**, and even a data board from the Tang dynasty (the *Lychee Road* poster) — visualization is how humans have always communicated data.
+
+**The common thread:** each one made a pattern *visible* that the raw numbers hid.
+
+## 1.3 "Garbage in, garbage out"
+
+Mistakes, biases and systematic errors lead to falsified data — and **failure to notice them produces false discoveries**. Two cautionary tales from the lecture:
+
+**Mars Climate Orbiter.** The spacecraft was destroyed in the Martian atmosphere because one measurement system used **SI units (metric, NASA)** and another used **US customary units (Lockheed Martin)**. A units mismatch — not a physics failure. The lesson: *always sanity-check your units*.
+
+**A corrupted data point.** This is worth running yourself:
+
+```r
+library(tidyverse)
+set.seed(123)
+
+x <- rnorm(50, mean = 50, sd = 10)
+y <- rnorm(50, mean = 30, sd = 5)
+data <- data.frame(x, y)
+
+cor(x, y)          # baseline correlation
+
+x[20] <- x[20] * 10     # one typo: multiply a single value by 10
+
+cor(x, y)          # correlation changes dramatically!
+```
+
+**Predict then run.** How much does ONE bad value move the correlation? (A lot.) This is why "look at your data" comes before "trust your statistics" — and why the next plot matters.
+
+```r
+data.frame(x, y) |>
+  ggplot(aes(x, y)) + geom_point()
+```
+
+**Your turn:** plot `x` vs `y` after the corruption. Can you see the outlier? Now imagine you'd only reported the correlation number.
+
+## 1.4 The components of a graph
+
+The first step in learning ggplot2 is being able to **break a graph into components**:
+
+| Component | Meaning |
+|---|---|
+| **Data** | the tidy data frame being plotted |
+| **Geometry** | what shape represents the data — `geom_point`, `geom_bar`, `geom_histogram`, `geom_density`, `geom_qq`, `geom_boxplot` ... |
+| **Aesthetic mapping** | how data columns connect to visual properties (x, y, color, size, shape, label) |
+
+Plus: coordinate system, position adjustment, labels and legends, theme, facet.
+
+**The mental model:** *data* + *aes* → *geometry*, assembled into a plot.
+
+## 1.5 ggplot objects and layers
+
+```r
+ggplot(data = murders)          # initialises the plot object — blank slate
+# or, with the pipe:
+murders |> ggplot()
+
+p <- ggplot(data = murders)
+class(p)      # "gg" "ggplot"
+p             # or print(p) — renders it
+```
+
+It renders **a blank slate** because no geometry has been defined. Only the grey background.
+
+**Layers are added with `+`:**
+
+```
+DATA |> ggplot() + LAYER 1 + LAYER 2 + ... + LAYER N
+```
+
+> ⚠️ Note the mixture: the **pipe `|>`** feeds data *into* `ggplot()`, but layers are joined with **`+`**. They are not interchangeable — `+` adds to a ggplot object, `|>` passes an object as an argument.
+
+## 1.6 Aesthetic mappings — the key idea
+
+`aes()` connects **data** to **what you see on the graph**:
+
+```r
+murders |> ggplot() +
+  geom_point(aes(x = population/10^6, y = total))
+```
+
+You can drop the `x =` and `y =` since they're the first and second expected arguments:
+
+```r
+murders |> ggplot() + geom_point(aes(population/10^6, total))
+```
+
+Or build up an object:
+
+```r
+p <- ggplot(data = murders)
+p <- p + geom_point(aes(population/10^6, total))
+p
+```
+
+### The behaviour you must internalize
+
+Inside `aes()`, you can use **bare column names** — `population` and `total` — *without* `murders$`.
+
+Why? Because `aes()` looks up the variable names **in the data component**.
+
+**And this is specific to `aes()`.** Outside of `aes()`, if you try to use `population` on its own, you get an error — it isn't an object in your workspace. That's exactly the same "dplyr knows the columns" behaviour from Lec 2, but for plotting.
+
+**Try it:** run `population` on its own in the console. Error. Run `murders$population`. Works. The convenience exists only inside `aes()`.
+
+## 1.7 Adding a second layer
+
+To label each point with the state abbreviation, add a text layer. `geom_label` draws a rectangle behind the text; `geom_text` doesn't:
+
+```r
+ggplot(data = murders) +
+  geom_point(aes(population/10^6, total)) +
+  geom_text(aes(population/10^6, total, label = abb))
+```
+
+Note we had to define the x/y mapping **twice** — once per layer. We'll fix that shortly with a global mapping.
+
+**Predict then run:** what happens if you write `geom_text(aes(population/10^6, total, label = abb))` but forget `label = abb`? (You get one text label per row saying nothing useful — or an error about a missing `label` aesthetic.)
+
+## 1.8 Arguments *inside* vs *outside* `aes()` — a crucial distinction
+
+Make the points bigger:
+
+```r
+ggplot(data = murders) +
+  geom_point(aes(population/10^6, total), size = 3) +
+  geom_text(aes(population/10^6, total, label = abb))
+```
+
+Note `size = 3` sits **outside** `aes()`.
+
+**Why?** Because size here is **not observation-associated** — it applies to *all* data points equally. Putting it inside `aes()` (`aes(..., size = 3)`) would tell ggplot2 to map *the number 3* to a size scale, which is not what you mean.
+
+> **The rule:** `aes()` is for mappings **from data**. Fixed stylistic choices go **outside** `aes()`.
+>
+> Same applies to `color = "blue"` (outside → all points blue) vs `aes(color = region)` (inside → a color per region).
+
+### Nudging the labels
+
+Bigger points make labels hard to read. `nudge_x` shifts the text sideways:
+
+```r
+ggplot(data = murders) +
+  geom_point(aes(population/10^6, total), size = 3) +
+  geom_text(aes(population/10^6, total, label = abb), nudge_x = 1.5)
+```
+
+**Try** different `nudge_x` values. What happens at 1.5 on a *log* scale later? (You'll need a much smaller value — see §1.10.)
+
+## 1.9 Global vs local aesthetic mappings
+
+We wrote `aes(population/10^6, total)` twice. Instead, move it to `ggplot()` — a **global** mapping that all layers inherit:
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(size = 3) +
+  geom_text(nudge_x = 1.5)
+```
+
+- The global mapping applies to **both** `geom_point` and `geom_text`.
+- `geom_point` doesn't need a `label`, so it **ignores** it. No error — ggplot2 just uses the aesthetics each layer understands.
+
+### Local overrides global
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(size = 3) +
+  geom_text(aes(x = 10, y = 800, label = 'Yo!'))
+```
+
+The `geom_text` layer defines its own x/y, so it **overrides** the global mapping — and prints a single "Yo!" at (10, 800).
+
+**This is the layering model in action:** *global sets the default, local overrides it.*
+
+## 1.10 Scales
+
+The log-scale version of the plot needs a **scale layer**:
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(size = 3) +
+  geom_text(nudge_x = 0.05) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10')
+```
+
+Because we're now in log scale, `nudge_x` must be much smaller (0.05 vs 1.5) — a fixed nudge means something different on a multiplicative axis.
+
+That transformation is so common ggplot2 gives it a shortcut:
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(size = 3) +
+  geom_text(nudge_x = 0.05) +
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+**Why log scales matter for data like this:** population and murder totals span several orders of magnitude (a few hundred thousand to 40 million). On a linear axis, everything except California and Texas piles up in the corner.
+
+## 1.11 Labels and titles
+
+> "Plots without labels and titles are like babies without name, it can't happen."
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(size = 3) +
+  geom_text(nudge_x = 0.05) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = 'Populations in millions (log scale)',
+       y = 'Total number of murders (log scale)',
+       title = 'US Gun Murders in 2010')
+```
+
+**Alternative style** (some prefer one function per label, for better "layerization"):
+
+```r
+  xlab('Populations in millions (log scale)') +
+  ylab('Total number of murders (log scale)') +
+  ggtitle('US Gun Murders in 2010')
+```
+
+`labs()` also renames **legends** — the lecture's example: `labs(color = 'Region')` turns the legend title from `region` to `Region`.
+
+## 1.12 Categories as colors
+
+```r
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(aes(color = region), size = 3) +
+  geom_text(nudge_x = 0.05) +
+  scale_x_log10() + scale_y_log10() +
+  xlab('Populations in millions (log scale)') +
+  ylab('Total number of murders (log scale)') +
+  ggtitle('US Gun Murders in 2010') +
+  labs(color = 'Region')
+```
+
+Two behaviours worth noticing:
+
+1. **Assign a categorical variable to `color` — ggplot2 automatically picks a color per category and adds a legend.** Because the color is determined by a feature of each observation, this is an **aesthetic mapping** (it goes inside `aes()`).
+2. To suppress the legend: `geom_point(..., show.legend = FALSE)`.
+
+**Contrast** `aes(color = region)` (a color per region, legend auto-added) with `color = 'blue'` outside `aes()` (every point blue, no legend). Same function, opposite meanings — this is the §1.8 distinction again.
+
+## 1.13 Annotations: `geom_abline`
+
+Sometimes you want to add something *not derived from the data mapping* — a reference line, a shaded region, a box.
+
+The lecture adds the **average murder rate** for the whole country as a reference line. On a log-log plot, a constant rate `r` (where `y = r·x`) becomes:
+
+```
+log(y) = log(r) + log(x)
+```
+
+— a line with **slope 1** and **intercept log(r)**.
+
+```r
+r <- murders |>
+  summarize(rate = sum(total) / sum(population) * 10^6) |>
+  pull(rate)
+
+p + geom_abline(slope = 1, intercept = log10(r),
+                lty = 'dashed', color = 'darkgrey')
+```
+
+**Why slope 1?** Because a *constant rate* means murders and population grow together proportionally — on a log-log plot that's a straight line at 45°.
+
+> Note `geom_abline` isn't on the cheat sheet. The lecture's point: **make your own cheat sheet.**
+
+## 1.14 Line types (`lty`)
+
+| value | line type |
+|---|---|
+| 0 | 'blank' |
+| 1 | 'solid' |
+| 2 | 'dashed' |
+| 3 | 'dotted' |
+| 4 | 'dotdash' |
+| 5 | 'longdash' |
+| 6 | 'twodash' |
+
+Use a dashed line and a lighter color for trend lines and annotations — it visually separates *reference* information from *data*.
+
+## 1.15 Themes
+
+The power of ggplot2 is amplified by add-on packages. `ggthemes` provides ready-made styles:
+
+```r
+library(ggthemes)
+p + theme_economist()
+# or
+p + theme_fivethirtyeight()
+```
+
+The lecture's target look is **The Economist** style.
+
+Full list: <https://yutannihilation.github.io/allYourFigureAreBelongToUs/ggthemes/>
+
+**Try** both themes on the murders plot. Which do you find more readable, and why?
+
+## 1.16 Fixing overlapping labels: `geom_text_repel`
+
+With many points close together, `geom_text` labels overlap into an unreadable mess. The **ggrepel** package fixes it by pushing labels apart:
+
+```r
+library(ggrepel)
+
+ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(aes(color = region), size = 3) +
+  geom_text_repel(nudge_x = 0.05) +     # <- instead of geom_text
+  scale_x_log10() + scale_y_log10() +
+  xlab('Populations in millions (log scale)') +
+  ylab('Total number of murders (log scale)') +
+  ggtitle('US Gun Murders in 2010') +
+  labs(color = 'Region') +
+  theme_economist()
+```
+
+**Predict:** what will `geom_text_repel` do differently vs `geom_text` with the same arguments? (It adds a small line from label to point when it has to move a label far away.)
+
+## 1.17 Putting it all together
+
+The complete pipeline from the lecture — worth reading line by line, because every line is something you've now built:
+
+```r
+library(tidyverse)
+library(dslabs)
+library(ggthemes)
+library(ggrepel)
+
+data(murders)
+
+r <- murders |>
+  summarize(rate = sum(total) / sum(population) * 10^6) |>
+  pull(rate)
+
+p <- ggplot(murders, aes(population/10^6, total, label = abb)) +
+  geom_point(aes(col = region), size = 3) +
+  geom_text_repel(nudge_x = 0.05) +
+  scale_x_log10() +
+  scale_y_log10() +
+  xlab('Populations in millions (log scale)') +
+  ylab('Total number of murders (log scale)') +
+  ggtitle('US Gun Murders in 2010') +
+  geom_abline(slope = 1, intercept = log10(r),
+              lty = 'dashed', color = 'darkgrey') +
+  labs(color = 'Region') +
+  theme_economist()
+
+print(p)
+```
+
+**Notice the shape of a ggplot2 call:** data + global aes, then layers stacked with `+`, scales, labels, and a theme last.
+
+### Grids of plots
+
+To put plots side by side:
+
+```r
+library(gridExtra)
+grid.arrange(p1, p2, ncol = 2)
+```
+
+## 1.18 A note on package versions (from the lecture)
+
+A classmate hit this warning:
+
+```r
+heights |> filter(sex == 'Female') |>
+  summarize(min_medium_max = quantile(height, c(0, 0.5, 1)))
+# Warning: Returning more (or less) than 1 row per `summarise()` group was deprecated
+# in dplyr 1.1.0. Please use `reframe()` instead.
+```
+
+The lecturer's answer has two parts worth internalizing:
+
+1. **It's a warning, not an error.** The code still works. `summarize` returning multiple rows was deprecated in dplyr 1.1.0 but **has not been removed** — and won't be for many versions, because removing it would break dependent libraries.
+2. **Pinning versions is a real skill.** If your analysis must be reproducible on someone else's machine, fix the versions you depend on:
+
+```r
+# install.packages("remotes")
+remotes::install_version("tidyverse", version = "1.3.2",
+                         repos = "http://cran.r-project.org")
+```
+
+> **For this course:** if a warning appears, `check` the object — the warning tells you what changed but the result is usually what you need. Tidyverse is not conservative about obsoleting old ways when a better way exists.
+
+---
+# Part 2 · Visualizing data distributions
+
+## 2.1 What is a distribution?
+
+**A distribution describes the way data is spread out across a range of values.**
+
+The lecture's framing question: *How much do people earn in Hong Kong?*
+- A single number: the median salary was **HKD 83.6/hour (~14,500 HKD/month)** for employees in 2024.
+- But **one number is often not enough.** We also want:
+  - **Central tendencies**: mean, median
+  - **Spread/dispersion**: variance, standard deviation, IQR
+  - **Patterns**: symmetric? skewed? bi-modal? uniform? heavy-tailed?
+
+**What's a better way to communicate all of that?** A picture of the distribution.
+
+### Variable types
+
+| Type | Sub-type | Examples |
+|---|---|---|
+| **Categorical** | ordinal (has order) | {very bad, bad, neutral, good, very good}; blood group |
+| | nominal (no order) | {Northeast, South, North Central, West}; gender |
+| **Numerical** | discrete (countable) | population size; number of damaged parts |
+| | continuous (needs decimals) | heights, length, size |
+
+This matters because **the variable type determines which plot is appropriate.**
+
+## 2.2 Counting categorical data: `geom_bar`
+
+```r
+data(heights)
+str(heights)
+# 'data.frame': 1050 obs. of 2 variables:
+#  $ sex   : Factor w/ 2 levels
+#  $ height: num  190 178 173 ...
+
+heights |> ggplot(aes(sex)) + geom_bar()
+murders |> ggplot(aes(region)) + geom_bar()
+```
+
+`geom_bar` only needs the **x** mapping — it computes the count for you.
+
+> The heights dataset is in **inches**. The lecture notes: `mutate(height = height * 2.54)` if you'd rather work in cm. (Common exam trick — check your units.)
+
+### Proportions instead of counts
+
+```r
+heights |>
+  count(sex) |>
+  mutate(proportion = n / sum(n)) |>
+  ggplot(aes(sex, proportion)) + geom_col()
+```
+
+- `count(sex)` yields a new column **`n`** with the counts.
+- `geom_col` (unlike `geom_bar`) **requires both x and y** — it does not compute anything.
+- `geom_bar` only needs x and computes counts automatically.
+
+**Try both and confirm they look the same** (one in counts, one in proportions).
+
+> **Important:** in any bar plot, one axis is **categorical** and the other is **numerical** (count or proportion). When the variable of interest is itself numeric/continuous, a bar plot is the *wrong* tool — that's what a histogram is for.
+
+## 2.3 Histogram
+
+Why can't we just report the frequency of each value for a continuous variable? Because
+
+```r
+heights |> count(height)
+```
+
+gives almost as many rows as there are observations — mostly `n = 1`. **Not an effective summary.**
+
+A **histogram** instead divides the span of the data into **non-overlapping bins**, then counts how many values fall in each.
+
+```r
+heights |>
+  filter(sex == 'Female') |>
+  ggplot(aes(height)) +
+  geom_histogram(binwidth = 1, fill = 'paleturquoise', col = 'whitesmoke') +
+  xlab('Female heights in inches') +
+  ggtitle('Histogram')
+```
+
+**Read the plot:** the range is 50 to 84 inches; more than 95% is between 63 and 75; the distribution is close to **symmetric around 69 inches**.
+
+**What we lose:** all values in a bin are treated identically — the histogram does not distinguish 64, 64.1 and 64.2. Given those differences are invisible to the eye, the practical cost is negligible, and we summarized the data to just 23 numbers.
+
+**Try it:** plot with `binwidth = 0.5`, then `binwidth = 5`. How does the story change?
+
+<details>
+<summary><b>Answer</b></summary>
+
+- `binwidth = 0.5` — lots of jagged local peaks ("noise" appearing as structure).
+- `binwidth = 5` — so coarse that the shape (and any bimodality) disappears.
+
+**The binwidth is a modelling choice, not a detail.** Too small = noise; too big = erased structure. `1` was chosen deliberately.
+</details>
+
+## 2.4 Smoothed density
+
+A **smooth density plot** conveys the same information as a histogram but is aesthetically more appealing — a curve through the tops of the bars, with the bars removed.
+
+```r
+heights |>
+  filter(sex == 'Female') |>
+  ggplot(aes(height)) +
+  geom_density(fill = 'paleturquoise', adjust = 1)
+```
+
+- No sharp edges at bin boundaries; many local peaks are smoothed away.
+- The y-axis changes from **counts** to **density** — chosen so the **area under the curve sums to 1**. So the area under the curve for an interval approximates the *proportion* of data in that interval.
+
+`adjust` is a **bandwidth multiplier**:
+- `adjust = 0.5` → half the default bandwidth → more wiggly, more local structure visible
+- `adjust = 2` → double → smoother, more shape erased
+
+### The real advantage: comparing two distributions
+
+```r
+heights |>
+  ggplot(aes(height, color = sex, fill = sex)) +
+  geom_density(adjust = 1, alpha = 0.5)
+```
+
+- `color` = **line** color, `fill` = **area** color (they're different aesthetics!)
+- `alpha = 0.5` = **transparency**, so overlapping regions remain visible
+
+Densities make it easier to compare two distributions — the jagged edges of two histograms would add clutter.
+
+**Try it** with `alpha = 1` vs `alpha = 0.5`. Why is transparency essential when distributions overlap?
+
+## 2.5 The normal distribution
+
+Can we summarize even further — to just **two numbers** (average and standard deviation)? To understand why those two are so widely used, you need the **normal distribution** (a.k.a. the bell curve, the Gaussian distribution).
+
+```r
+ggplot(data.frame(x = c(-3, 3)), aes(x = x)) +
+  stat_function(fun = dnorm)
+```
+
+That's a normal distribution with average 0 and SD 1.
+
+**Why it matters:** the distribution of many datasets can be approximated by a normal distribution — gambling winnings, heights, weights, blood pressure, standardized test scores, experimental measurement errors.
+
+The normal distribution adapts to different datasets by adjusting just **two numbers**: the **mean** and the **standard deviation**.
+
+### Checking normality visually
+
+Overlay the actual distribution with a normal curve fitted to the same mean/SD:
+
+```r
+x <- heights$height
+m <- mean(x)
+s <- sd(x)
+
+heights |> filter(sex == 'Male') |>
+  ggplot(aes(height)) +
+  geom_density(fill = 'paleturquoise', adjust = 1) +
+  stat_function(fun = dnorm, args = list(mean = m, sd = s), color = 'red')
+```
+
+If the red curve tracks the density, the normal approximation is reasonable. (For heights it does.) The lecture defers *what to do with that* to the statistics section.
+
+## 2.6 Boxplot
+
+**Percentiles**: the value below which *p* of the data falls. The 10th percentile has 10% of data below it. The most famous is the **50th percentile = the median**. **Quartiles** are the 25th, 50th and 75th percentiles.
+
+Why do we need boxplots at all? Look at the murder-rate distribution:
+
+```r
+murders <- murders |> mutate(rate = total / population * 10^6)
+ggplot(murders, aes(rate)) + geom_histogram(bins = 30)
+```
+
+It's **strongly skewed with outliers** — the normal approximation does **not** apply here. Average ± SD would mislead. We need more information.
+
+### The five-number summary
+
+A boxplot shows: the **range** plus the **quartiles** (25th, 50th, 75th).
+
+R's boxplot implementation **ignores outliers when computing the range** and plots them as separate points (**"whiskers"** extend to the most extreme non-outlier).
+
+**How are outliers defined?**
+- **IQR** (interquartile range) = the middle 50% = Q3 − Q1
+- **Outlier** = below **Q1 − 1.5·IQR** or above **Q3 + 1.5·IQR**
+
+```r
+ggplot(murders, aes(x = region, y = rate)) +
+  geom_boxplot() +
+  coord_flip()          # flips the axes — easier to read long category labels
+```
+
+**Read it:** the distribution is **not symmetric** across regions, and there are a few outliers.
+
+```r
+ggplot(heights, aes(x = sex, y = height)) + geom_boxplot()
+```
+
+**Predict**: which sex has the higher median? The wider IQR? (Male; roughly similar.)
+
+**What a boxplot hides:** by reducing to five numbers, it can miss important features (e.g. bimodality).
+
+## 2.7 Violin plot
+
+The violin plot shows the **full density shape** per group — the boxplot's blind spot:
+
+```r
+heights |>
+  ggplot(aes(x = sex, y = height, color = sex, fill = sex)) +
+  geom_violin(alpha = 0.5) +
+  theme_minimal()
+```
+
+**Boxplot vs violin — when to use which?**
+- Boxplot: compact comparison of medians/spread/outliers across many groups.
+- Violin: when the **shape** (bimodality, skew) is the story.
+- Both hide individual points — see the swarm plot in Part 3 for the fix.
+
+## 2.8 Q-Q plot
+
+A **Q-Q plot** ("quantile-quantile") assesses whether a set of data plausibly came from some theoretical distribution — most often, whether it's **normal**.
+
+**How to read it:** if the data *is* normally distributed, the points lie on a **straight diagonal line**.
+
+```r
+ggplot(heights, aes(sample = height, color = sex)) +
+  geom_qq() +
+  geom_qq_line()
+```
+
+**Predict then run:** will the heights points lie on the line? (Roughly yes — heights are close to normal. The tails are where deviations show up.)
+
+> Notes: in `geom_qq`, the aesthetic is **`sample`**, not `x`/`y`. `geom_qq_line()` draws the reference line.
+
+Further reading: <https://towardsdatascience.com/q-q-plots-explained-5aa8495426c0>
+
+## 2.9 Stratification
+
+All the examples above did the same thing: split observations into groups by one or more variables, then compared.
+
+**This procedure is called stratification**, and the resulting groups are **strata**.
+
+> "In data analysis we often divide observations into groups based on the values of one or more variables associated with those observations."
+
+Stratification is ubiquitous in visualization because we're usually interested in **how a distribution differs across subgroups** — by region (murders), by sex (heights), by continent (gapminder, next).
+
+**In ggplot2, stratification shows up as:** `fill`/`color` mappings, `facet_grid`/`facet_wrap`, and `group_by` before summarizing.
+
+---
+# Part 3 · Data visualization in practice (Gapminder / Hans Rosling)
+
+## 3.1 The case study
+
+**Hans Rosling** co-founded the **Gapminder Foundation** to use data to dispel myths about the "developing world":
+
+> "Journalists and lobbyists tell dramatic stories... The piles of dramatic stories pile up in people's minds into an over-dramatic worldview."
+
+The question this section answers:
+
+> **Is it fair to characterize today's world as divided into western rich nations and the developing world in Africa, Asia and Latin America?**
+
+```r
+library(tidyverse)
+library(dslabs)
+data(gapminder)
+str(gapminder)
+# 10545 obs. of 9 variables:
+#  $ country, year, infant_mortality, life_expectancy,
+#  $ fertility, population, gdp, continent, region
+```
+
+## 3.2 Rosling's quiz — how misinformed are we?
+
+For each pair, which country had the **higher child mortality** in 2015?
+
+1. Sri Lanka or Turkey
+2. Poland or South Korea
+3. Malaysia or Russia
+4. Pakistan or Vietnam
+5. Thailand or South Africa
+
+**Answer them before reading on.** Then check:
+
+```r
+gapminder |>
+  filter(year == 2015 & country %in% c('Sri Lanka', 'Turkey')) |>
+  select(country, infant_mortality)
+```
+
+**The result — and the point:** when Rosling gave this quiz to educated audiences, the **average score was less than 2.5 out of 5 — worse than random guessing.** As the lecture puts it:
+
+> **This implies that more than ignorant, we are misinformed.**
+
+That's the case for visualizing data: our prior beliefs are actively wrong, not merely absent.
+
+**Run all five pairs yourself** and compare to your guesses.
+
+## 3.3 Scatterplots: is the "west vs the rest" view true?
+
+The dichotomy belief: western countries = long lives + small families; developing world = short lives + large families.
+
+Start with 1963 — when this view was formed:
+
+```r
+gapminder |>
+  filter(year == 1963) |>
+  ggplot(aes(fertility, life_expectancy)) +
+  geom_point()
+```
+
+**Most points fall into two distinct clusters** — exactly the dichotomy: around 70 years/≤3 children, and below 65 years/≥5 children.
+
+To confirm these clusters are the regions we expect, map **continent to color**:
+
+```r
+gapminder |>
+  filter(year == 1963) |>
+  ggplot(aes(fertility, life_expectancy, color = continent)) +
+  geom_point()
+```
+
+Now the blue points (Europe) are clearly the long-life/small-family cluster.
+
+**The question for the next 50 years:** *is this still true in 2013?*
+
+## 3.4 Faceting — the key comparison tool
+
+To compare 1963 vs 2013 we want **side-by-side plots**. ggplot2 does this with **faceting**: stratify by a variable, make the same plot for each stratum.
+
+Add a layer with **`facet_grid(row ~ col)`** — the `~` separates row and column variables:
+
+```r
+gapminder |>
+  filter(year %in% c(1963, 2013)) |>
+  ggplot(aes(fertility, life_expectancy, color = continent)) +
+  geom_point() +
+  facet_grid(year ~ continent)
+```
+
+That's a plot for **every continent/year pair** — 10 panels, more than we need.
+
+### Using `.` for the unused dimension
+
+If you only want to facet by one variable, use **`.`** to say "not using one of the variables":
+
+```r
+# facets stacked vertically (year as rows)
+facet_grid(year ~ .)
+
+# facets side by side (year as columns)
+facet_grid(. ~ year)
+```
+
+The side-by-side version makes the story clear: **in 2013 most countries have moved from the developing-world cluster to the western one.** The west-vs-developing dichotomy **no longer makes sense.**
+
+**Try all three faceting variants** above and describe the difference.
+
+## 3.5 `facet_wrap` and fixed scales
+
+To see *how* the transformation happened, plot several years (1963, 1973, 1983, 1993, 2003, 2013). Putting them all on one row makes each panel too thin — instead let `facet_wrap` arrange them into rows and columns:
+
+```r
+years <- c(1963, 1973, 1983, 1993, 2003, 2013)
+continents <- c('Europe', 'Asia')
+
+gapminder |>
+  filter(year %in% years & continent %in% continents) |>
+  ggplot(aes(fertility, life_expectancy, col = continent)) +
+  geom_point() +
+  facet_wrap(. ~ year)
+```
+
+**This shows Asian countries improving at a much faster rate than European ones.**
+
+### Why fixed scales matter
+
+**When using facet, the axis range is determined by the data in ALL panels and kept fixed across them.** This is deliberate — it makes comparison across panels possible.
+
+You can see the point cloud *move* because the axes don't move.
+
+Turn it off and the story disappears:
+
+```r
+facet_wrap(. ~ year, scales = 'free')
+```
+
+**Predict then run:** with `scales = 'free'`, each panel gets its own range. Can you still see the trend? (No — every panel looks full, and the movement is invisible. **This is a great example of a technically-truer plot being a worse communication.**)
+
+## 3.6 Time series plots
+
+New questions emerge: **which countries improved more? Was the improvement constant, or concentrated in certain periods?**
+
+**Time series plots** have time on the x-axis and the measurement of interest on the y.
+
+```r
+gapminder |>
+  filter(country %in% c('United States')) |>
+  ggplot(aes(year, fertility)) +
+  geom_point()
+```
+
+The trend is **not linear at all**: a sharp drop in the 60s-70s to below 2, then back to ~2 and stabilized during the 1990s.
+
+When points are **regularly and densely spaced**, join them into a curve with **`geom_line`** — signalling "this is one series":
+
+```r
+gapminder |>
+  filter(country %in% c('United States')) |>
+  ggplot(aes(year, fertility)) +
+  geom_line()
+```
+
+### The warning message is information
+
+Both plots produce:
+```
+Warning message: Removed 1 row containing missing values (`geom_line()`).
+```
+
+**Why?** Not all rows are complete:
+
+```r
+filter(gapminder, is.na(gapminder$fertility))
+# Greenland 2014, 2015, Albania 2016, ...  -> fertility is NA
+```
+
+**Predict:** how many rows have missing fertility? (Check with `sum(is.na(gapminder$fertility))`.) The lecture notes we'll handle missing data properly in the wrangling section — here, the warning is ggplot being honest with you.
+
+## 3.7 Comparing multiple countries
+
+To draw **separate lines** per country, map country to color (and thus to `group`, which is what actually separates the lines):
+
+```r
+countries <- c('South Korea', 'Germany')
+
+gapminder |>
+  filter(country %in% countries & !is.na(fertility)) |>
+  ggplot(aes(year, fertility, color = country)) +
+  geom_line()
+```
+
+**Read it:** South Korea's fertility dropped **drastically** during the 1960s-70s, and by 1990 had a rate similar to Germany's. Two countries with wildly different starting points converging.
+
+### Labels instead of legends
+
+> "For trend plots we recommend labeling the lines rather than using legends... This suggestion actually applies to most plots: **labeling is usually preferred over legends.**"
+
+The **geomtextpath** package puts the label *on* the line:
+
+```r
+gapminder |>
+  filter(country %in% c('United States', 'Canada', 'Germany', 'South Korea',
+                        'China', 'Hong Kong, China') & !is.na(fertility)) |>
+  ggplot(aes(year, fertility, color = country, label = country)) +
+  geom_textpath() +
+  theme(legend.position = 'none')
+```
+
+**Read it:** the fertility gap is almost **closed** between western and non-western countries.
+
+**Why prefer labels to legends?** With a legend the reader has to look away, decode a color, and look back — for every line. A label on the line answers the question in place.
+
+## 3.8 Data transformations: GDP per capita per day
+
+Now the second question: **has income inequality across countries worsened over the last 40 years?**
+
+The gapminder table includes **GDP**. `GDP per capita` is a rough summary of a country's wealth; divided by 365 we get **GDP per capita per day**.
+
+> Using current US dollars, someone surviving on **less than $2.15 a day** is defined as living in **absolute poverty** by the World Bank.
+
+```r
+gapminder <- gapminder |> mutate(dollars_per_day = gdp / population / 365)
+```
+
+With GDP values inflation-adjusted and normalized to US dollars, these are meant to be comparable across years.
+
+### Why this needs a log scale
+
+```r
+past_year <- 1970
+
+gapminder |>
+  filter(year == past_year & !is.na(gdp)) |>
+  ggplot(aes(dollars_per_day)) +
+  geom_histogram(binwidth = 1, color = 'white')
+```
+
+**The problem:** most countries are below $10/day, but most of the **x-axis** is devoted to the ~35 countries above $10/day. The plot is **not informative about the countries that matter most** — the poor ones.
+
+**Why log?** The income changes we care about are **multiplicative** — $1 → $2 → $4 → $8 → $16 → $32 → $64 (extremely poor → very rich). **A log transformation converts multiplicative changes into additive ones**: with base 2, a doubling becomes an increase of 1.
+
+```r
+gapminder |>
+  filter(year == past_year & !is.na(gdp)) |>
+  ggplot(aes(log2(dollars_per_day))) +
+  geom_histogram(binwidth = 1, color = 'white')
+```
+
+Now the distribution is **symmetric**, and we can see the poor countries clearly.
+
+## 3.9 Transform the values, or transform the scale?
+
+Two equivalent ways to get a log axis:
+
+```r
+# (a) transform the VALUES
+ggplot(aes(log2(dollars_per_day))) + ...
+
+# (b) transform the SCALE
+ggplot(aes(dollars_per_day)) + ... +
+  scale_x_continuous(trans = 'log2')
+```
+
+**They produce the same picture.** The lecturer prefers **(b), transforming the scale**, for two reasons:
+
+1. **Speed** — transforming values on real, large datasets is slow.
+2. **More intuitive axis labels** — the axis still reads $1, $8, $64 rather than 0, 3, 6.
+
+**Use (b).** The shortcut for a common case: `scale_x_log10()`.
+
+### Which base?
+
+| base | when |
+|---|---|
+| **2** | smaller ranges. Here the range is [0.327, 48.885] — base 2 spread it better than base 10 |
+| **10** | larger values, e.g. **population** (10 thousand to a billion) |
+| **e** (natural log) | **not suggested in visualization** |
+
+```r
+# population: base 10 is clearer
+gapminder |>
+  filter(year == past_year) |>
+  ggplot(aes(log10(population))) +
+  geom_histogram(binwidth = 0.5, color = 'black')
+```
+
+**Rule of thumb:** pick the base so the axis ticks land on numbers your reader already thinks in (doublings, or powers of ten).
+
+### Multimodal distributions
+
+The 1970 income histogram shows **two bumps** — around $2/day and around $32/day. A **mode** is the value with the highest frequency; a distribution that goes up and down again has **multiple modes / local modes**.
+
+This **bimodality** is consistent with a dichotomous world: countries below ~$8/day, and countries above.
+
+## 3.10 Comparing distributions across regions
+
+A histogram doesn't tell us *which* countries are in which group. Start by examining by region, reordered by median:
+
+```r
+gapminder |>
+  filter(year == past_year & !is.na(gdp)) |>
+  mutate(region = reorder(region, dollars_per_day, FUN = median)) |>
+  ggplot(aes(dollars_per_day, region)) +
+  geom_point() +
+  scale_x_continuous(trans = 'log2')
+```
+
+**We can already see the "west versus the rest" dichotomy** — two clear groups, with the rich group made of North America, Northern and Western Europe, New Zealand and Australia.
+
+### Grouping countries into five strata
+
+To make subsequent analysis cleaner, collapse the regions into groups:
+
+```r
+gapminder <- gapminder |>
+  mutate(group = case_when(
+    region %in% c('Western Europe', 'Northern Europe', 'Southern Europe',
+                  'Northern America', 'Australia and New Zealand') ~ 'West',
+    region %in% c('Eastern Asia', 'South-Eastern Asia') ~ 'East Asia',
+    region %in% c('Caribbean', 'Central America', 'South America') ~ 'Latin America',
+    continent == 'Africa' & region != 'Northern Africa' ~ 'Sub-Saharan',
+    TRUE ~ 'Others'
+  ))
+```
+
+**Then control the display order by making it a factor:**
+
+```r
+gapminder <- gapminder |>
+  mutate(group = factor(group,
+                        levels = c('Others', 'Latin America', 'East Asia',
+                                   'Sub-Saharan', 'West')))
+
+class(gapminder$group)   # "factor"
+```
+
+**Why bother?** The `levels` order determines the axis order in every plot from here on. Without it, ggplot sorts alphabetically — which buries the story.
+
+## 3.11 Boxplot, swarm and ridge — three ways to compare distributions
+
+### Boxplot across groups
+
+```r
+p <- gapminder |>
+  filter(year == past_year & !is.na(gdp)) |>
+  ggplot(aes(group, dollars_per_day)) +
+  geom_boxplot() +
+  scale_y_continuous(trans = 'log2') +
+  xlab('') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p
+```
+
+Note the two readability tricks: `angle = 90` rotates the category labels, and `hjust = 1` right-aligns them so they sit under their tick.
+
+**The boxplot's limitation:** summarizing to five numbers can hide important structure.
+
+### The fix — show the data (swarm plot)
+
+```r
+p + geom_point(alpha = 0.5)
+```
+
+That's a **swarm plot** — the boxplot carries the summary, the points carry the truth. **This is the "show your data" principle from Lec 4, applied.**
+
+### Ridge plots — stacked densities
+
+```r
+library(ggridges)
+
+p <- gapminder |>
+  filter(year == past_year & !is.na(dollars_per_day)) |>
+  ggplot(aes(dollars_per_day, group)) +
+  scale_x_continuous(trans = 'log2')
+
+p + geom_density_ridges()
+```
+
+A **ridge plot is stacked smooth densities** — you see the full shape per group, not five numbers.
+
+**With the actual data points shown as a "rug":**
+
+```r
+p + geom_density_ridges(jittered_points = TRUE,
+                        position = position_points_jitter(height = 0),
+                        point_shape = '|', point_size = 3,
+                        point_alpha = 1, alpha = 0.5)
+```
+
+The vertical tick marks are individual countries. The interval spacing is adjustable via `scale =` inside `geom_density_ridges`.
+
+**Try all three** (boxplot / swarm / ridge) on the same data. Which would you show to (a) a statistician, (b) a policymaker, (c) the public?
+
+## 3.12 1970 vs 2010: has the dichotomy persisted?
+
+```r
+present_year <- 2010
+years <- c(past_year, present_year)
+
+gapminder |>
+  filter(year %in% years & !is.na(gdp)) |>
+  mutate(west = ifelse(group == 'West', 'West', 'Developing')) |>
+  ggplot(aes(dollars_per_day)) +
+  geom_histogram(binwidth = 1, color = 'black') +
+  scale_x_continuous(trans = 'log2') +
+  facet_grid(year ~ west)
+```
+
+**But wait — the plot seems to have more countries in 2010 than in 1970.** That's a data problem, not a real change: not every country has data in both years.
+
+### Fix it by intersecting the country lists
+
+```r
+country_list_1 <- gapminder |>
+  filter(year == past_year & !is.na(dollars_per_day)) |> pull(country)
+
+country_list_2 <- gapminder |>
+  filter(year == present_year & !is.na(dollars_per_day)) |> pull(country)
+
+country_list <- intersect(country_list_1, country_list_2)
+
+length(country_list_1)   # 113
+length(country_list_2)   # 176
+length(country_list)     # 108
+```
+
+Now filter with `country %in% country_list` so both panels compare **the same countries**.
+
+> **This is a crucial general lesson:** whenever you compare two time points, **check that the underlying set hasn't changed.** `intersect()` (from Lec 4's set operators) is the tool.
+
+**The result:** rich countries became a bit richer, but **percentage-wise the poor countries improved more.**
+
+### Which regions improved most?
+
+Boxplots of the five groups, faceted by year — or, more conveniently, side by side within each region:
+
+```r
+gapminder |>
+  filter(year %in% years & country %in% country_list) |>
+  mutate(year = factor(year)) |>          # fill= accepts only a factor
+  ggplot(aes(group, dollars_per_day, fill = year)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(trans = 'log2') +
+  xlab('')
+```
+
+**Why `factor(year)`?** Because `fill` maps a **discrete** scale — a numeric year would be treated as continuous and produce a gradient instead of two distinct colors.
+
+### The final ridge plot
+
+```r
+gapminder |>
+  filter(year %in% years & !is.na(dollars_per_day) & country %in% country_list) |>
+  mutate(year = factor(year)) |>
+  ggplot(aes(dollars_per_day, group, fill = year)) +
+  scale_x_continuous(trans = 'log2') +
+  geom_density_ridges(alpha = 0.3)
+```
+
+**Finding:** East Asia improved most significantly — but still has **two modes**.
+
+And if you have more than a few years to compare, swapping the axes works better:
+
+```r
+p + geom_density_ridges(alpha = 0.7, scale = 0.8)
+```
+
+(with `year` on the y-axis and `group` as the fill — try it and see why the lecturer calls it a judgement call.)
+
+---
+# Recap — what you should be able to explain
+
+**ggplot2 fundamentals**
+1. The three components of a graph: **data, geometry, aesthetic mapping** (+ coord, position, labels, theme, facet).
+2. Layer syntax: `DATA |> ggplot() + LAYER + LAYER` — and why `|>` and `+` are **not** interchangeable.
+3. Why `aes()` can use bare column names, and why that's specific to `aes()`.
+4. **Inside `aes()` = mapping from data; outside = fixed value.** (`aes(color = region)` vs `color = 'blue'`.)
+5. Global vs local aesthetic mappings, and that local overrides global.
+6. Scales: `scale_x_continuous(trans = 'log10')` vs the `scale_x_log10()` shortcut.
+7. `labs()` for axis titles, plot title **and legend titles**.
+8. `geom_abline(slope, intercept)` for reference lines; on log-log a constant *rate* is slope 1.
+9. `lty` line types; `ggthemes`; `geom_text_repel` for overlapping labels; `gridExtra::grid.arrange` for grids.
+10. Warnings are not errors — `check` the object. Version pinning is a real reproducibility skill.
+
+**Distributions**
+11. Variable types (categorical: ordinal/nominal; numerical: discrete/continuous) determine plot choice.
+12. `geom_bar` (x only, computes counts) vs `geom_col` (needs x and y).
+13. Histograms: **binwidth is a modelling choice** — too small = noise, too big = erased structure.
+14. Smooth density: area = 1; `adjust` = bandwidth multiplier; `alpha` for overlap.
+15. Normal distribution = mean + SD; check it by overlaying `dnorm` or with a Q-Q plot.
+16. Boxplot: quartiles, IQR, outliers at Q1−1.5·IQR / Q3+1.5·IQR; `coord_flip()`.
+17. Stratification = splitting by variables; the concept behind every grouped plot.
+
+**In practice**
+18. Faceting: `facet_grid(row ~ col)`, `.` for the unused dimension, `facet_wrap`, and **why fixed scales matter** (and when `scales='free'` destroys the message).
+19. `geom_point` vs `geom_line` for time series; read missing-data warnings.
+20. Label lines directly instead of using legends.
+21. Log transformations: **multiplicative → additive**; base 2 vs 10 vs never natural log; transform the **scale**, not the values.
+22. Comparing two time points: **intersect the country lists first** — otherwise you compare different sets.
+
+**Next:** text mining / string processing, then the statistics section.
